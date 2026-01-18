@@ -1,0 +1,160 @@
+@page "/logs"
+@using CTrader.Data
+@using CTrader.Data.Entities
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject IWebHostEnvironment Environment
+
+<PageTitle>Logs - CTrader</PageTitle>
+
+<h1>System Logs</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Log Files</span>
+                <button class="btn btn-sm btn-outline-primary" @onclick="RefreshLogs">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <select class="form-select" @bind="_selectedLogFile" @bind:after="LoadLogContent">
+                        <option value="">Select a log file...</option>
+                        @foreach (var file in _logFiles)
+                        {
+                            <option value="@file">@Path.GetFileName(file)</option>
+                        }
+                    </select>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_logContent))
+                {
+                    <pre class="bg-dark text-light p-3" style="max-height: 500px; overflow-y: auto; font-size: 0.8rem;">@_logContent</pre>
+                }
+                else
+                {
+                    <p class="text-muted">Select a log file to view its contents.</p>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">Regime Analysis History</div>
+            <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                @if (_regimeHistory.Any())
+                {
+                    @foreach (var analysis in _regimeHistory)
+                    {
+                        <div class="mb-3 pb-3 border-bottom">
+                            <div class="d-flex justify-content-between">
+                                <span class="badge @GetRegimeBadgeClass(analysis.Regime)">@analysis.Regime</span>
+                                <small class="text-muted">@analysis.AnalyzedAt.ToString("g")</small>
+                            </div>
+                            <div class="small mt-1">
+                                Confidence: @((analysis.Confidence * 100).ToString("F0"))% | Risk: @analysis.RiskLevel
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p class="text-muted">No regime analysis history.</p>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">System Info</div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <strong>Environment:</strong> @Environment.EnvironmentName
+                </div>
+                <div class="mb-2">
+                    <strong>Data Path:</strong> <code>data/</code>
+                </div>
+                <div class="mb-2">
+                    <strong>Log Files:</strong> @_logFiles.Count
+                </div>
+                <div class="mb-2">
+                    <strong>Regime Analyses:</strong> @_regimeHistory.Count
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<string> _logFiles = [];
+    private string _selectedLogFile = "";
+    private string _logContent = "";
+    private List<RegimeAnalysis> _regimeHistory = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshLogs();
+        await LoadRegimeHistory();
+    }
+
+    private async Task RefreshLogs()
+    {
+        _logFiles = [];
+        var logPath = Path.Combine(Environment.ContentRootPath, "data", "logs");
+        if (Directory.Exists(logPath))
+        {
+            _logFiles = Directory.GetFiles(logPath, "*.log")
+                .OrderByDescending(f => File.GetLastWriteTime(f))
+                .ToList();
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private Task LoadLogContent()
+    {
+        if (string.IsNullOrEmpty(_selectedLogFile) || !File.Exists(_selectedLogFile))
+        {
+            _logContent = "";
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            // Read with FileShare.ReadWrite to allow reading while Serilog writes
+            using var stream = new FileStream(_selectedLogFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream);
+            var content = reader.ReadToEnd();
+
+            // Get last 1000 lines
+            var lines = content.Split('\n');
+            var lastLines = lines.TakeLast(1000);
+            _logContent = string.Join("\n", lastLines);
+        }
+        catch (Exception ex)
+        {
+            _logContent = $"Error reading log file: {ex.Message}";
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadRegimeHistory()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _regimeHistory = await context.RegimeAnalyses
+            .OrderByDescending(r => r.AnalyzedAt)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private static string GetRegimeBadgeClass(string regime) => regime switch
+    {
+        "RiskOn" => "bg-success",
+        "RiskOff" => "bg-warning text-dark",
+        "Neutral" => "bg-secondary",
+        "HighVolatility" => "bg-warning text-dark",
+        "Crisis" => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

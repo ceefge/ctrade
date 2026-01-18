@@ -1,0 +1,191 @@
+@page "/news"
+@using CTrader.Models
+@using CTrader.Services.News
+@using CTrader.Services.Analysis
+@inject INewsAggregator NewsAggregator
+@inject IMarketAnalyzer MarketAnalyzer
+
+<PageTitle>News - CTrader</PageTitle>
+
+<h1>Market News</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Latest News</span>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="RefreshNews" disabled="@_isLoading">
+                        @(_isLoading ? "Loading..." : "Refresh")
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="GenerateSummary" disabled="@_isGeneratingSummary">
+                        @(_isGeneratingSummary ? "Generating..." : "AI Summary")
+                    </button>
+                </div>
+            </div>
+            <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                @if (_news.Any())
+                {
+                    @foreach (var item in _news)
+                    {
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <h6 class="card-title mb-1">
+                                        @if (!string.IsNullOrEmpty(item.Url))
+                                        {
+                                            <a href="@item.Url" target="_blank" class="text-decoration-none">@item.Headline</a>
+                                        }
+                                        else
+                                        {
+                                            @item.Headline
+                                        }
+                                    </h6>
+                                    @if (item.SentimentScore.HasValue)
+                                    {
+                                        <span class="badge @GetSentimentClass(item.SentimentScore.Value)">
+                                            @item.SentimentScore.Value.ToString("F2")
+                                        </span>
+                                    }
+                                </div>
+                                <p class="card-text small text-muted mb-2">
+                                    @item.Source | @item.PublishedAt.ToString("MMM dd, yyyy HH:mm")
+                                </p>
+                                @if (!string.IsNullOrEmpty(item.Summary))
+                                {
+                                    <p class="card-text small">@TruncateSummary(item.Summary)</p>
+                                }
+                                @if (item.Symbols.Any())
+                                {
+                                    <div>
+                                        @foreach (var symbol in item.Symbols.Take(5))
+                                        {
+                                            <span class="badge bg-primary me-1">@symbol</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-center py-5">
+                        <p class="text-muted">No news available. Click Refresh to fetch latest news.</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">AI Market Summary</div>
+            <div class="card-body">
+                @if (!string.IsNullOrEmpty(_marketSummary))
+                {
+                    <p style="white-space: pre-wrap;">@_marketSummary</p>
+                }
+                else
+                {
+                    <p class="text-muted">Click "AI Summary" to generate a market analysis based on current news.</p>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Statistics</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Total Articles:</strong> @_news.Count
+                </div>
+                <div class="mb-3">
+                    <strong>Sources:</strong>
+                    <div class="mt-1">
+                        @foreach (var source in _news.GroupBy(n => ExtractSourceName(n.Source)).Take(5))
+                        {
+                            <span class="badge bg-secondary me-1">@source.Key (@source.Count())</span>
+                        }
+                    </div>
+                </div>
+                @if (_news.Any(n => n.SentimentScore.HasValue))
+                {
+                    <div class="mb-3">
+                        <strong>Average Sentiment:</strong>
+                        @{
+                            var avgSentiment = _news.Where(n => n.SentimentScore.HasValue).Average(n => n.SentimentScore!.Value);
+                        }
+                        <span class="badge @GetSentimentClass(avgSentiment)">@avgSentiment.ToString("F2")</span>
+                    </div>
+                }
+                <div>
+                    <strong>Top Mentioned Symbols:</strong>
+                    <div class="mt-1">
+                        @foreach (var symbol in _news.SelectMany(n => n.Symbols).GroupBy(s => s).OrderByDescending(g => g.Count()).Take(10))
+                        {
+                            <span class="badge bg-primary me-1">@symbol.Key (@symbol.Count())</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<MarketNews> _news = [];
+    private string _marketSummary = "";
+    private bool _isLoading;
+    private bool _isGeneratingSummary;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cached = await NewsAggregator.GetCachedNewsAsync(48);
+        _news = cached.ToList();
+    }
+
+    private async Task RefreshNews()
+    {
+        _isLoading = true;
+        try
+        {
+            var news = await NewsAggregator.FetchLatestNewsAsync();
+            _news = news.ToList();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task GenerateSummary()
+    {
+        _isGeneratingSummary = true;
+        try
+        {
+            _marketSummary = await MarketAnalyzer.GetMarketSummaryAsync(_news.Take(30));
+        }
+        finally
+        {
+            _isGeneratingSummary = false;
+        }
+    }
+
+    private static string GetSentimentClass(decimal score) => score switch
+    {
+        > 0.2m => "bg-success",
+        < -0.2m => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string TruncateSummary(string summary)
+    {
+        return summary.Length > 300 ? summary[..297] + "..." : summary;
+    }
+
+    private static string ExtractSourceName(string source)
+    {
+        var parts = source.Split(" - ");
+        return parts.Length > 1 ? parts[1] : parts[0];
+    }
+}

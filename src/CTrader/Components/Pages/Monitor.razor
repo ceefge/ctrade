@@ -1,0 +1,300 @@
+@page "/monitor"
+@using CTrader.Data.Entities
+@using CTrader.Services.Logging
+@using CTrader.Services.Trading
+@inject IActivityLogger ActivityLogger
+@inject ITradingService TradingService
+@implements IDisposable
+
+<PageTitle>Monitor - CTrader</PageTitle>
+
+<h1>Aktivitäts-Monitor</h1>
+
+<div class="row mb-3">
+    <div class="col-md-8">
+        <div class="btn-group" role="group">
+            <button class="btn @(_autoRefresh ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoRefresh">
+                @(_autoRefresh ? "Auto-Refresh AN" : "Auto-Refresh AUS")
+            </button>
+            <button class="btn btn-outline-primary" @onclick="RefreshLogs" disabled="@_isLoading">
+                @(_isLoading ? "Lädt..." : "Aktualisieren")
+            </button>
+            <button class="btn btn-outline-danger" @onclick="ClearOldLogs">
+                Alte Logs löschen
+            </button>
+        </div>
+    </div>
+    <div class="col-md-4 text-end">
+        <span class="text-muted">Letzte Aktualisierung: @_lastRefresh.ToString("HH:mm:ss")</span>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" @bind="_filterCategory" @bind:after="RefreshLogs">
+            <option value="">Alle Kategorien</option>
+            <option value="System">System</option>
+            <option value="Trading">Trading</option>
+            <option value="News">News</option>
+            <option value="Analysis">Analysis</option>
+            <option value="Api">API</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" @bind="_filterLevel" @bind:after="RefreshLogs">
+            <option value="">Alle Level</option>
+            <option value="Info">Info</option>
+            <option value="Success">Success</option>
+            <option value="Warning">Warning</option>
+            <option value="Error">Error</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" @bind="_logCount" @bind:after="RefreshLogs">
+            <option value="50">50 Einträge</option>
+            <option value="100">100 Einträge</option>
+            <option value="250">250 Einträge</option>
+            <option value="500">500 Einträge</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <div class="d-flex align-items-center h-100">
+            <span class="badge bg-primary me-2">@_logs.Count Einträge</span>
+            <span class="badge @(TradingService.IsRunning ? "bg-success" : "bg-secondary")">
+                Trading: @(TradingService.IsRunning ? "Aktiv" : "Inaktiv")
+            </span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="sticky-top bg-light">
+                    <tr>
+                        <th style="width: 160px;">Zeitstempel</th>
+                        <th style="width: 80px;">Level</th>
+                        <th style="width: 100px;">Kategorie</th>
+                        <th>Nachricht</th>
+                        <th style="width: 120px;">Quelle</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_logs.Any())
+                    {
+                        @foreach (var log in _logs)
+                        {
+                            <tr class="@GetRowClass(log.Level)">
+                                <td class="text-muted small">@log.Timestamp.ToLocalTime().ToString("dd.MM.yy HH:mm:ss")</td>
+                                <td>
+                                    <span class="badge @GetLevelBadgeClass(log.Level)">@log.Level</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">@log.Category</span>
+                                </td>
+                                <td>
+                                    @log.Message
+                                    @if (!string.IsNullOrEmpty(log.Details))
+                                    {
+                                        <button class="btn btn-sm btn-link p-0 ms-2" @onclick="() => ShowDetails(log)">
+                                            Details
+                                        </button>
+                                    }
+                                </td>
+                                <td class="small text-muted">@log.Source</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">
+                                Keine Log-Einträge gefunden.
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mt-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-info">@_logs.Count(l => l.Level == "Info")</h5>
+                <small class="text-muted">Info</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-success">@_logs.Count(l => l.Level == "Success")</h5>
+                <small class="text-muted">Erfolg</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-warning">@_logs.Count(l => l.Level == "Warning")</h5>
+                <small class="text-muted">Warnungen</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-danger">@_logs.Count(l => l.Level == "Error")</h5>
+                <small class="text-muted">Fehler</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_selectedLog != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Log Details</h5>
+                    <button type="button" class="btn-close" @onclick="() => _selectedLog = null"></button>
+                </div>
+                <div class="modal-body">
+                    <dl class="row">
+                        <dt class="col-sm-3">Zeitstempel</dt>
+                        <dd class="col-sm-9">@_selectedLog.Timestamp.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</dd>
+
+                        <dt class="col-sm-3">Level</dt>
+                        <dd class="col-sm-9"><span class="badge @GetLevelBadgeClass(_selectedLog.Level)">@_selectedLog.Level</span></dd>
+
+                        <dt class="col-sm-3">Kategorie</dt>
+                        <dd class="col-sm-9">@_selectedLog.Category</dd>
+
+                        <dt class="col-sm-3">Nachricht</dt>
+                        <dd class="col-sm-9">@_selectedLog.Message</dd>
+
+                        <dt class="col-sm-3">Quelle</dt>
+                        <dd class="col-sm-9">@(_selectedLog.Source ?? "-")</dd>
+
+                        <dt class="col-sm-3">Details</dt>
+                        <dd class="col-sm-9">
+                            <pre class="bg-light p-2" style="white-space: pre-wrap;">@(_selectedLog.Details ?? "-")</pre>
+                        </dd>
+                    </dl>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _selectedLog = null">Schließen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ActivityLog> _logs = [];
+    private bool _isLoading;
+    private bool _autoRefresh = true;
+    private DateTime _lastRefresh = DateTime.Now;
+    private string _filterCategory = "";
+    private string _filterLevel = "";
+    private int _logCount = 100;
+    private ActivityLog? _selectedLog;
+    private Timer? _refreshTimer;
+    private bool _disposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshLogs();
+        StartAutoRefresh();
+    }
+
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new Timer(async _ =>
+        {
+            if (_disposed || !_autoRefresh) return;
+
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    await RefreshLogs();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException)
+            {
+                // Component was disposed, ignore
+            }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private void ToggleAutoRefresh()
+    {
+        _autoRefresh = !_autoRefresh;
+    }
+
+    private async Task RefreshLogs()
+    {
+        if (_disposed) return;
+
+        _isLoading = true;
+        try
+        {
+            var category = string.IsNullOrEmpty(_filterCategory) ? null : _filterCategory;
+            var level = string.IsNullOrEmpty(_filterLevel) ? null : _filterLevel;
+            _logs = (await ActivityLogger.GetLogsAsync(_logCount, category, level)).ToList();
+            _lastRefresh = DateTime.Now;
+        }
+        catch (Exception)
+        {
+            // Ignore errors during refresh to prevent circuit break
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ClearOldLogs()
+    {
+        await ActivityLogger.ClearLogsAsync(7);
+        await ActivityLogger.LogInfoAsync("System", "Alte Logs gelöscht (älter als 7 Tage)", source: "Monitor");
+        await RefreshLogs();
+    }
+
+    private void ShowDetails(ActivityLog log)
+    {
+        _selectedLog = log;
+    }
+
+    private static string GetLevelBadgeClass(string level) => level switch
+    {
+        "Info" => "bg-info",
+        "Success" => "bg-success",
+        "Warning" => "bg-warning text-dark",
+        "Error" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string GetRowClass(string level) => level switch
+    {
+        "Warning" => "table-warning",
+        "Error" => "table-danger",
+        "Success" => "table-success",
+        _ => ""
+    };
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _refreshTimer?.Dispose();
+    }
+}

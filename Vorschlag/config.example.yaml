@@ -1,0 +1,196 @@
+# AI Trading Bot - Hauptkonfiguration
+# Kopiere diese Datei nach config.yaml und passe sie an
+
+# ============================================================
+# TRADING-EINSTELLUNGEN
+# ============================================================
+trading:
+  # Startkapital in EUR
+  capital: 50000
+  
+  # Trading-Modus: "paper" oder "live"
+  # WICHTIG: Immer zuerst "paper" testen!
+  mode: "paper"
+  
+  # Sekunden zwischen Trading-Zyklen
+  cycle_interval_seconds: 300
+  
+  # Minimales Kapital pro Trade
+  min_trade_capital: 500
+  
+  # IB Gateway Verbindung
+  ib_gateway:
+    host: "127.0.0.1"
+    # Port: 7497 = Paper Trading, 7496 = Live Trading
+    port: 7497
+    client_id: 1
+
+# ============================================================
+# RISIKOMANAGEMENT
+# ============================================================
+risk:
+  # Maximaler Anteil des Kapitals pro Position (5% = 0.05)
+  max_position_pct: 0.05
+  
+  # Maximales Risiko pro Trade (1% = 0.01)
+  max_risk_per_trade_pct: 0.01
+  
+  # Maximales Gesamtrisiko des Portfolios
+  max_portfolio_risk_pct: 0.10
+  
+  # Maximaler Drawdown bevor Bot stoppt
+  max_drawdown_pct: 0.15
+  
+  # Minimum Reward/Risk Ratio für Trades
+  min_reward_ratio: 2.0
+  
+  # Maximale Korrelation zwischen Positionen
+  max_correlation: 0.7
+  
+  # Maximale Anzahl gleichzeitiger Positionen
+  max_positions: 10
+
+# ============================================================
+# STRATEGIEN
+# ============================================================
+strategies:
+  # Momentum-Strategie (bei Trends)
+  momentum:
+    enabled: true
+    stop_loss_pct: 0.05        # 5% Stop-Loss
+    take_profit_pct: 0.15      # 15% Take-Profit
+    trailing_stop_pct: 0.03    # 3% Trailing Stop
+    min_trend_strength: 0.6    # Minimale Trend-Stärke (0-1)
+    lookback_days: 20          # Tage für Trend-Berechnung
+    
+  # Mean-Reversion-Strategie (bei Seitwärtsmärkten)
+  mean_reversion:
+    enabled: true
+    stop_loss_pct: 0.03        # 3% Stop-Loss (enger)
+    take_profit_pct: 0.06      # 6% Take-Profit
+    rsi_oversold: 30           # RSI unter 30 = überverkauft
+    rsi_overbought: 70         # RSI über 70 = überkauft
+    bollinger_std: 2.0         # Bollinger Band Standardabweichung
+    lookback_days: 14          # Tage für Berechnung
+
+# ============================================================
+# MÄRKTE & INSTRUMENTE
+# ============================================================
+markets:
+  # Erlaubte Börsen
+  allowed_exchanges:
+    - "XETRA"
+    - "NYSE"
+    - "NASDAQ"
+    - "LSE"
+    - "SWX"
+  
+  # Erlaubte Instrumente
+  allowed_instruments:
+    - "STK"    # Aktien
+    - "ETF"    # ETFs
+    # - "OPT"  # Optionen (später aktivieren)
+    # - "FUT"  # Futures (später aktivieren)
+  
+  # Handelszeiten (für Xetra)
+  trading_hours:
+    start: "09:00"
+    end: "17:30"
+    timezone: "Europe/Berlin"
+  
+  # Watchlist (bevorzugte Symbole)
+  watchlist:
+    - "AAPL"
+    - "MSFT"
+    - "GOOGL"
+    - "AMZN"
+    - "SAP"
+    - "SIE"    # Siemens
+    - "ALV"    # Allianz
+    - "BAS"    # BASF
+
+# ============================================================
+# NEWS & SENTIMENT
+# ============================================================
+news:
+  # News-Cache TTL in Minuten
+  cache_ttl_minutes: 5
+  
+  # Maximale Artikel pro Analyse
+  max_articles: 30
+  
+  # Relevante Kategorien
+  categories:
+    - "general"
+    - "financial_markets"
+    - "economy_macro"
+    - "technology"
+    - "earnings"
+  
+  # RSS Feeds (Fallback)
+  rss_feeds:
+    reuters: "https://www.reutersagency.com/feed/?best-topics=business-finance"
+    cnbc: "https://www.cnbc.com/id/100003114/device/rss/rss.html"
+    marketwatch: "http://feeds.marketwatch.com/marketwatch/topstories/"
+
+# ============================================================
+# LLM-EINSTELLUNGEN
+# ============================================================
+llm:
+  # Provider: "anthropic" oder "openai"
+  provider: "anthropic"
+  
+  # Modell
+  model: "claude-sonnet-4-20250514"
+  
+  # Max Tokens für Antworten
+  max_tokens: 2000
+  
+  # Temperatur (0 = deterministisch, 1 = kreativ)
+  temperature: 0.3
+  
+  # Retry bei Fehlern
+  max_retries: 3
+  retry_delay_seconds: 5
+
+# ============================================================
+# LOGGING
+# ============================================================
+logging:
+  # Log-Level: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # Log-Dateien
+  file:
+    enabled: true
+    path: "data/logs/trading.log"
+    max_size_mb: 10
+    backup_count: 5
+  
+  # Console-Output
+  console:
+    enabled: true
+    colored: true
+
+# ============================================================
+# ALERTS & NOTIFICATIONS (optional)
+# ============================================================
+notifications:
+  # Telegram (optional)
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  
+  # Discord (optional)
+  discord:
+    enabled: false
+    webhook_url: ""
+  
+  # Bei welchen Events benachrichtigen
+  events:
+    - "trade_executed"
+    - "stop_loss_triggered"
+    - "regime_change"
+    - "drawdown_warning"
+    - "error"

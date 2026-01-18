@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>CTrader</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Database -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <!-- IB API - Note: The official IB TWS API may need to be installed manually from Interactive Brokers website -->
+    <!-- For development/testing without IB API, a stub implementation is used -->
+    <!-- To use the real IB API, download from: https://interactivebrokers.github.io/ -->
+    <!-- <PackageReference Include="IBApi" Version="10.x.x" /> -->
+
+    <!-- HTTP & APIs -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="System.ServiceModel.Syndication" Version="8.0.0" />
+
+    <!-- LLM - Using direct HTTP client instead of SDK for better control -->
+
+    <!-- Logging -->
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+
+    <!-- Utilities -->
+    <PackageReference Include="Cronos" Version="0.8.4" />
+  </ItemGroup>
+
+</Project>

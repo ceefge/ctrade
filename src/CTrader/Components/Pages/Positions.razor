@@ -1,0 +1,205 @@
+@page "/positions"
+@using CTrader.Data
+@using CTrader.Data.Entities
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+
+<PageTitle>Positions - CTrader</PageTitle>
+
+<h1>Active Positions</h1>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Current Holdings</span>
+        <button class="btn btn-sm btn-outline-primary" @onclick="RefreshPositions">Refresh</button>
+    </div>
+    <div class="card-body">
+        @if (_positions.Any())
+        {
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th class="text-end">Quantity</th>
+                        <th class="text-end">Avg Cost</th>
+                        <th class="text-end">Stop Loss</th>
+                        <th class="text-end">Take Profit</th>
+                        <th>Strategy</th>
+                        <th>Opened</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var position in _positions)
+                    {
+                        <tr>
+                            <td><strong>@position.Symbol</strong></td>
+                            <td class="text-end">@position.Quantity</td>
+                            <td class="text-end">@position.AvgCost.ToString("C")</td>
+                            <td class="text-end @(position.StopLoss.HasValue ? "" : "text-muted")">
+                                @(position.StopLoss?.ToString("C") ?? "-")
+                            </td>
+                            <td class="text-end @(position.TakeProfit.HasValue ? "" : "text-muted")">
+                                @(position.TakeProfit?.ToString("C") ?? "-")
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(position.Strategy))
+                                {
+                                    <span class="badge bg-info">@position.Strategy</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td>@position.OpenedAt.ToString("g")</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => EditPosition(position)">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ClosePosition(position)">Close</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="row mt-4">
+                <div class="col-md-4">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">Total Positions</h6>
+                            <h3>@_positions.Count</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">Total Cost Basis</h6>
+                            <h3>@_positions.Sum(p => p.AvgCost * p.Quantity).ToString("C")</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">Max Risk (to Stop)</h6>
+                            <h3>@CalculateTotalRisk().ToString("C")</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <p class="text-muted">No active positions.</p>
+            </div>
+        }
+    </div>
+</div>
+
+@if (_editingPosition != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Position - @_editingPosition.Symbol</h5>
+                    <button type="button" class="btn-close" @onclick="CancelEdit"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Stop Loss</label>
+                        <input type="number" step="0.01" class="form-control" @bind="_editStopLoss" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Take Profit</label>
+                        <input type="number" step="0.01" class="form-control" @bind="_editTakeProfit" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Strategy</label>
+                        <input type="text" class="form-control" @bind="_editStrategy" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SavePosition">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Position> _positions = [];
+    private Position? _editingPosition;
+    private decimal? _editStopLoss;
+    private decimal? _editTakeProfit;
+    private string? _editStrategy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshPositions();
+    }
+
+    private async Task RefreshPositions()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _positions = await context.Positions.OrderBy(p => p.Symbol).ToListAsync();
+    }
+
+    private void EditPosition(Position position)
+    {
+        _editingPosition = position;
+        _editStopLoss = position.StopLoss;
+        _editTakeProfit = position.TakeProfit;
+        _editStrategy = position.Strategy;
+    }
+
+    private void CancelEdit()
+    {
+        _editingPosition = null;
+    }
+
+    private async Task SavePosition()
+    {
+        if (_editingPosition != null)
+        {
+            await using var context = await DbContextFactory.CreateDbContextAsync();
+            var position = await context.Positions.FindAsync(_editingPosition.Id);
+            if (position != null)
+            {
+                position.StopLoss = _editStopLoss;
+                position.TakeProfit = _editTakeProfit;
+                position.Strategy = _editStrategy;
+                await context.SaveChangesAsync();
+            }
+            await RefreshPositions();
+            CancelEdit();
+        }
+    }
+
+    private async Task ClosePosition(Position position)
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        var pos = await context.Positions.FindAsync(position.Id);
+        if (pos != null)
+        {
+            context.Positions.Remove(pos);
+            await context.SaveChangesAsync();
+        }
+        await RefreshPositions();
+    }
+
+    private decimal CalculateTotalRisk()
+    {
+        return _positions.Sum(p =>
+        {
+            if (p.StopLoss.HasValue)
+            {
+                return (p.AvgCost - p.StopLoss.Value) * p.Quantity;
+            }
+            return p.AvgCost * p.Quantity * 0.05m; // Assume 5% if no stop
+        });
+    }
+}

@@ -1,0 +1,197 @@
+@page "/"
+@using CTrader.Models
+@using CTrader.Services.Trading
+@using CTrader.Services.News
+@using CTrader.Services.Analysis
+@inject ITradingService TradingService
+@inject INewsAggregator NewsAggregator
+@inject IMarketAnalyzer MarketAnalyzer
+
+<PageTitle>Dashboard - CTrader</PageTitle>
+
+<h1>Dashboard</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Trading Service Status</span>
+                <span class="badge @(TradingService.IsRunning ? "bg-success" : "bg-secondary")">
+                    @(TradingService.IsRunning ? "Running" : "Stopped")
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Broker Connection:</strong>
+                    <span class="badge @(TradingService.IsBrokerConnected ? "bg-success" : "bg-danger")">
+                        @(TradingService.IsBrokerConnected ? "Connected" : "Disconnected")
+                    </span>
+                </div>
+                <div class="mb-3">
+                    <strong>Last Analysis:</strong>
+                    @(TradingService.LastAnalysisTime?.ToString("g") ?? "Never")
+                </div>
+                @if (!string.IsNullOrEmpty(TradingService.LastError))
+                {
+                    <div class="alert alert-danger">
+                        @TradingService.LastError
+                    </div>
+                }
+                <button class="btn btn-primary" @onclick="RunAnalysisAsync" disabled="@_isAnalyzing">
+                    @(_isAnalyzing ? "Analyzing..." : "Run Analysis Now")
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">Current Market Regime</div>
+            <div class="card-body">
+                @if (_currentRegime != null)
+                {
+                    <div class="d-flex align-items-center mb-3">
+                        <h3 class="mb-0 me-3">
+                            <span class="badge @GetRegimeBadgeClass(_currentRegime.Regime)">
+                                @_currentRegime.Regime
+                            </span>
+                        </h3>
+                        <span class="text-muted">
+                            Confidence: @((_currentRegime.Confidence * 100).ToString("F0"))%
+                        </span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Risk Level:</strong> @_currentRegime.RiskLevel
+                    </div>
+                    <div class="mb-2">
+                        <strong>Strategy:</strong> @_currentRegime.RecommendedStrategy
+                    </div>
+                    <div class="text-muted small">
+                        @_currentRegime.Reasoning
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted">No regime analysis available. Run analysis to get current market regime.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Recent News</span>
+                <button class="btn btn-sm btn-outline-primary" @onclick="RefreshNewsAsync" disabled="@_isLoadingNews">
+                    @(_isLoadingNews ? "Loading..." : "Refresh")
+                </button>
+            </div>
+            <div class="card-body">
+                @if (_recentNews.Any())
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var news in _recentNews.Take(10))
+                        {
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <h6 class="mb-1">@news.Headline</h6>
+                                        <small class="text-muted">@news.Source - @news.PublishedAt.ToString("g")</small>
+                                    </div>
+                                    @if (news.SentimentScore.HasValue)
+                                    {
+                                        <span class="badge @GetSentimentBadgeClass(news.SentimentScore.Value)">
+                                            @news.SentimentScore:F2
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted">No news available. Click refresh to fetch latest news.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _isAnalyzing;
+    private bool _isLoadingNews;
+    private RegimeAnalysisResult? _currentRegime;
+    private List<MarketNews> _recentNews = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentRegime = TradingService.CurrentRegime;
+        await LoadCachedNewsAsync();
+
+        TradingService.RegimeUpdated += OnRegimeUpdated;
+    }
+
+    private async Task LoadCachedNewsAsync()
+    {
+        var news = await NewsAggregator.GetCachedNewsAsync(24);
+        _recentNews = news.ToList();
+    }
+
+    private async Task RefreshNewsAsync()
+    {
+        _isLoadingNews = true;
+        try
+        {
+            var news = await NewsAggregator.FetchLatestNewsAsync();
+            _recentNews = news.ToList();
+        }
+        finally
+        {
+            _isLoadingNews = false;
+        }
+    }
+
+    private async Task RunAnalysisAsync()
+    {
+        _isAnalyzing = true;
+        try
+        {
+            _currentRegime = await TradingService.RunAnalysisAsync();
+        }
+        finally
+        {
+            _isAnalyzing = false;
+        }
+    }
+
+    private void OnRegimeUpdated(object? sender, RegimeAnalysisResult regime)
+    {
+        _currentRegime = regime;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private static string GetRegimeBadgeClass(MarketRegime regime) => regime switch
+    {
+        MarketRegime.RiskOn => "bg-success",
+        MarketRegime.RiskOff => "bg-warning text-dark",
+        MarketRegime.Neutral => "bg-secondary",
+        MarketRegime.HighVolatility => "bg-warning text-dark",
+        MarketRegime.Crisis => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string GetSentimentBadgeClass(decimal score) => score switch
+    {
+        > 0.2m => "bg-success",
+        < -0.2m => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    public void Dispose()
+    {
+        TradingService.RegimeUpdated -= OnRegimeUpdated;
+    }
+}

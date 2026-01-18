@@ -1,0 +1,53 @@
+# AI Trading Bot - Dependencies
+# Python 3.11+
+
+# === Trading & Market Data ===
+ib_insync>=0.9.86          # Interactive Brokers API Wrapper
+pandas>=2.0.0              # Datenverarbeitung
+numpy>=1.24.0              # Numerische Berechnungen
+ta>=0.10.2                 # Technische Indikatoren
+
+# === LLM / AI ===
+anthropic>=0.18.0          # Claude API
+openai>=1.12.0             # OpenAI API (optional)
+
+# === News & Data ===
+aiohttp>=3.9.0             # Async HTTP Client
+feedparser>=6.0.10         # RSS Feed Parser
+beautifulsoup4>=4.12.0     # HTML Parsing (für Scraping)
+lxml>=5.1.0                # XML/HTML Parser
+
+# === Configuration ===
+pyyaml>=6.0                # YAML Config Files
+python-dotenv>=1.0.0       # Environment Variables
+
+# === Async & Concurrency ===
+asyncio-throttle>=1.0.2    # Rate Limiting
+
+# === Logging & Monitoring ===
+loguru>=0.7.2              # Better Logging
+rich>=13.7.0               # Rich Console Output
+
+# === Testing ===
+pytest>=8.0.0              # Testing Framework
+pytest-asyncio>=0.23.0     # Async Test Support
+pytest-cov>=4.1.0          # Code Coverage
+
+# === Development ===
+black>=24.1.0              # Code Formatter
+isort>=5.13.0              # Import Sorting
+mypy>=1.8.0                # Type Checking
+ruff>=0.2.0                # Fast Linter
+
+# === Optional: Dashboard ===
+# streamlit>=1.31.0        # Web Dashboard
+# plotly>=5.18.0           # Interactive Charts
+# gradio>=4.16.0           # Alternative Dashboard
+
+# === Optional: Notifications ===
+# python-telegram-bot>=20.7  # Telegram Alerts
+# discord.py>=2.3.2          # Discord Alerts
+
+# === Optional: Backtesting ===
+# backtrader>=1.9.78       # Backtesting Framework
+# vectorbt>=0.26.0         # Vectorized Backtesting
