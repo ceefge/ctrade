@@ -268,7 +268,7 @@
     private string _finnhubApiKey = "";
     private string _alphaVantageApiKey = "";
     private string _ibGatewayHost = "localhost";
-    private int _ibGatewayPort = 4001;
+    private int _ibGatewayPort = 4002;
     private string _ibUsername = "";
     private string _ibPassword = "";
     private string _ibTotpSecret = "";
@@ -304,7 +304,7 @@
         _finnhubApiKey = await ParameterService.GetValueAsync("ApiKeys", "Finnhub", "");
         _alphaVantageApiKey = await ParameterService.GetValueAsync("ApiKeys", "AlphaVantage", "");
         _ibGatewayHost = await ParameterService.GetValueAsync("ApiKeys", "IbGatewayHost", "localhost");
-        _ibGatewayPort = await ParameterService.GetValueAsync("ApiKeys", "IbGatewayPort", 4001);
+        _ibGatewayPort = await ParameterService.GetValueAsync("ApiKeys", "IbGatewayPort", 4002);
         _ibUsername = await ParameterService.GetValueAsync("ApiKeys", "IbUsername", "");
         _ibPassword = await ParameterService.GetValueAsync("ApiKeys", "IbPassword", "");
         _ibTotpSecret = await ParameterService.GetValueAsync("ApiKeys", "IbTotpSecret", "");

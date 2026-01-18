@@ -11,7 +11,8 @@
       "Bash(git remote add:*)",
       "Bash(git push:*)",
       "Bash(gh repo create:*)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix: IB Gateway port for paper trading \\(4002 instead of 4001\\)\n\n- Port 4001 = Live Trading\n- Port 4002 = Paper Trading \\(default\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }
