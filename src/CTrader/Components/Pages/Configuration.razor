@@ -115,6 +115,58 @@
             </div>
         </div>
 
+        <div class="row">
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label class="form-label"><strong>VNC Passwort</strong></label>
+                    <div class="input-group">
+                        <input type="@(_showVncPassword ? "text" : "password")"
+                               class="form-control"
+                               @bind="_vncPassword"
+                               placeholder="VNC Passwort" />
+                        <button class="btn btn-outline-secondary" type="button" @onclick="() => _showVncPassword = !_showVncPassword">
+                            @(_showVncPassword ? "Verbergen" : "Anzeigen")
+                        </button>
+                    </div>
+                    <small class="text-muted">Für Remote-Zugriff auf IB Gateway</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label class="form-label"><strong>IB Gateway Fernzugriff</strong></label>
+                    <div class="d-flex gap-2">
+                        <a href="http://localhost:6080/vnc.html" target="_blank" class="btn btn-outline-info">
+                            noVNC im Browser öffnen
+                        </a>
+                    </div>
+                    <small class="text-muted">VNC-Passwort wird benötigt</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label class="form-label"><strong>IB Gateway Ports</strong></label>
+                    <table class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Port</th>
+                                <th>Modus</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>4001</code></td>
+                                <td>Live Trading</td>
+                            </tr>
+                            <tr class="table-success">
+                                <td><code>4002</code></td>
+                                <td>Paper Trading</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <div class="d-flex justify-content-between align-items-center">
             <button class="btn btn-primary" @onclick="SaveApiKeys" disabled="@_isSaving">
                 @(_isSaving ? "Speichern..." : "Alle Einstellungen speichern")
@@ -272,11 +324,13 @@
     private string _ibUsername = "";
     private string _ibPassword = "";
     private string _ibTotpSecret = "";
+    private string _vncPassword = "ctrader";
     private bool _showAnthropicKey;
     private bool _showFinnhubKey;
     private bool _showAlphaVantageKey;
     private bool _showIbPassword;
     private bool _showTotpSecret;
+    private bool _showVncPassword;
     private bool _isSaving;
     private string? _saveMessage;
     private bool _saveSuccess;
@@ -308,6 +362,7 @@
         _ibUsername = await ParameterService.GetValueAsync("ApiKeys", "IbUsername", "");
         _ibPassword = await ParameterService.GetValueAsync("ApiKeys", "IbPassword", "");
         _ibTotpSecret = await ParameterService.GetValueAsync("ApiKeys", "IbTotpSecret", "");
+        _vncPassword = await ParameterService.GetValueAsync("ApiKeys", "VncPassword", "ctrader");
 
         // If not in DB, try to load from config
         if (string.IsNullOrEmpty(_anthropicApiKey))
@@ -359,6 +414,9 @@
                     case "ALPHA_VANTAGE_API_KEY" when string.IsNullOrEmpty(_alphaVantageApiKey):
                         _alphaVantageApiKey = value;
                         break;
+                    case "VNC_PASSWORD" when string.IsNullOrEmpty(_vncPassword) || _vncPassword == "ctrader":
+                        _vncPassword = value;
+                        break;
                 }
             }
         }
@@ -400,6 +458,7 @@
             await ParameterService.SetAsync("ApiKeys", "IbUsername", _ibUsername, "string", "IB Gateway Username");
             await ParameterService.SetAsync("ApiKeys", "IbPassword", _ibPassword, "string", "IB Gateway Password");
             await ParameterService.SetAsync("ApiKeys", "IbTotpSecret", _ibTotpSecret, "string", "IB Gateway TOTP Secret");
+            await ParameterService.SetAsync("ApiKeys", "VncPassword", _vncPassword, "string", "VNC Password für IB Gateway");
 
             // Write .env file for Docker
             await WriteEnvFileAsync();
@@ -431,6 +490,7 @@
             $"IB_USERNAME={_ibUsername}",
             $"IB_PASSWORD={_ibPassword}",
             $"IB_TOTP_SECRET={_ibTotpSecret}",
+            $"VNC_PASSWORD={_vncPassword}",
             "",
             "# API Keys",
             $"ANTHROPIC_API_KEY={_anthropicApiKey}",

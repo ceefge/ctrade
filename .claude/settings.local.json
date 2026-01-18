@@ -12,7 +12,8 @@
       "Bash(git push:*)",
       "Bash(gh repo create:*)",
       "Bash(git remote set-url:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix: IB Gateway port for paper trading \\(4002 instead of 4001\\)\n\n- Port 4001 = Live Trading\n- Port 4002 = Paper Trading \\(default\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix: IB Gateway port for paper trading \\(4002 instead of 4001\\)\n\n- Port 4001 = Live Trading\n- Port 4002 = Paper Trading \\(default\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd VNC configuration and noVNC browser access\n\n- VNC password configurable in UI\n- noVNC link to access IB Gateway in browser \\(port 6080\\)\n- Port hint table \\(4001=Live, 4002=Paper\\)\n- Updated docker-compose.yml with noVNC port\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }
