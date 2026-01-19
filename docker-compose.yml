@@ -18,6 +18,22 @@ services:
     networks:
       - ctrader-network
 
+  novnc:
+    image: theasp/novnc:latest
+    restart: unless-stopped
+    depends_on:
+      - ib-gateway
+    environment:
+      DISPLAY_WIDTH: 1280
+      DISPLAY_HEIGHT: 800
+      RUN_XTERM: "no"
+      REMOTE_HOST: ib-gateway
+      REMOTE_PORT: 5900
+    ports:
+      - "6080:8080"
+    networks:
+      - ctrader-network
+
   ctrader:
     build:
       context: ./src/CTrader
