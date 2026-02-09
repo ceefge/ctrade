@@ -15,10 +15,19 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
 
-    <!-- IB API - Note: The official IB TWS API may need to be installed manually from Interactive Brokers website -->
-    <!-- For development/testing without IB API, a stub implementation is used -->
-    <!-- To use the real IB API, download from: https://interactivebrokers.github.io/ -->
-    <!-- <PackageReference Include="IBApi" Version="10.x.x" /> -->
+    <!-- IB TWS API - Vendored C# source from tws-api-dotnet-standard -->
+    <!-- Original: https://github.com/amittleider/tws-api-dotnet-standard -->
+    <!-- Source files in Lib/IbApi/ are compiled directly into the project -->
+  </ItemGroup>
+
+  <!-- Suppress nullable warnings for vendored IB API source -->
+  <ItemGroup>
+    <Compile Update="Lib\IbApi\**\*.cs">
+      <NoWarn>CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625</NoWarn>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
 
     <!-- HTTP & APIs -->
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />

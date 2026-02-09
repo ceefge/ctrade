@@ -11,7 +11,7 @@ public class AnthropicLlmClient : ILlmClient
     private readonly HttpClient _httpClient;
     private readonly IParameterService _parameters;
     private readonly ILogger<AnthropicLlmClient> _logger;
-    private readonly string? _apiKey;
+    private readonly string? _configApiKey;
 
     private const string ApiUrl = "https://api.anthropic.com/v1/messages";
 
@@ -20,18 +20,19 @@ public class AnthropicLlmClient : ILlmClient
         _httpClient = httpClient;
         _parameters = parameters;
         _logger = logger;
-        _apiKey = configuration["Anthropic:ApiKey"];
+        _configApiKey = configuration["Anthropic:ApiKey"];
+    }
 
-        if (!string.IsNullOrEmpty(_apiKey))
-        {
-            _httpClient.DefaultRequestHeaders.Add("x-api-key", _apiKey);
-            _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-        }
+    private async Task<string?> GetApiKeyAsync()
+    {
+        var dbKey = await _parameters.GetValueAsync("ApiKeys", "Anthropic", "");
+        return !string.IsNullOrEmpty(dbKey) ? dbKey : _configApiKey;
     }
 
     public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(_apiKey))
+        var apiKey = await GetApiKeyAsync();
+        if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogWarning("Anthropic API key not configured");
             return string.Empty;
@@ -42,6 +43,11 @@ public class AnthropicLlmClient : ILlmClient
 
         try
         {
+            _httpClient.DefaultRequestHeaders.Remove("x-api-key");
+            _httpClient.DefaultRequestHeaders.Remove("anthropic-version");
+            _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
+            _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+
             var request = new AnthropicRequest
             {
                 Model = modelName,

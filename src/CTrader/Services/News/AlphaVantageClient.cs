@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CTrader.Models;
+using CTrader.Services.Configuration;
 
 namespace CTrader.Services.News;
 
@@ -7,19 +8,28 @@ public class AlphaVantageClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<AlphaVantageClient> _logger;
-    private readonly string? _apiKey;
+    private readonly IParameterService _parameters;
+    private readonly string? _configApiKey;
 
-    public AlphaVantageClient(HttpClient httpClient, ILogger<AlphaVantageClient> logger, IConfiguration configuration)
+    public AlphaVantageClient(HttpClient httpClient, ILogger<AlphaVantageClient> logger, IConfiguration configuration, IParameterService parameters)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiKey = configuration["AlphaVantage:ApiKey"];
+        _parameters = parameters;
+        _configApiKey = configuration["AlphaVantage:ApiKey"];
         _httpClient.BaseAddress = new Uri("https://www.alphavantage.co/");
+    }
+
+    private async Task<string?> GetApiKeyAsync()
+    {
+        var dbKey = await _parameters.GetValueAsync("ApiKeys", "AlphaVantage", "");
+        return !string.IsNullOrEmpty(dbKey) ? dbKey : _configApiKey;
     }
 
     public async Task<IEnumerable<MarketNews>> GetNewsAndSentimentAsync(string? tickers = null, string? topics = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(_apiKey))
+        var apiKey = await GetApiKeyAsync();
+        if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogWarning("Alpha Vantage API key not configured");
             return [];
@@ -27,7 +37,7 @@ public class AlphaVantageClient
 
         try
         {
-            var url = $"query?function=NEWS_SENTIMENT&apikey={_apiKey}";
+            var url = $"query?function=NEWS_SENTIMENT&apikey={apiKey}";
             if (!string.IsNullOrEmpty(tickers))
                 url += $"&tickers={tickers}";
             if (!string.IsNullOrEmpty(topics))

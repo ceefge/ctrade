@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CTrader.Models;
+using CTrader.Services.Configuration;
 
 namespace CTrader.Services.News;
 
@@ -7,19 +8,28 @@ public class FinnhubClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<FinnhubClient> _logger;
-    private readonly string? _apiKey;
+    private readonly IParameterService _parameters;
+    private readonly string? _configApiKey;
 
-    public FinnhubClient(HttpClient httpClient, ILogger<FinnhubClient> logger, IConfiguration configuration)
+    public FinnhubClient(HttpClient httpClient, ILogger<FinnhubClient> logger, IConfiguration configuration, IParameterService parameters)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiKey = configuration["Finnhub:ApiKey"];
+        _parameters = parameters;
+        _configApiKey = configuration["Finnhub:ApiKey"];
         _httpClient.BaseAddress = new Uri("https://finnhub.io/api/v1/");
+    }
+
+    private async Task<string?> GetApiKeyAsync()
+    {
+        var dbKey = await _parameters.GetValueAsync("ApiKeys", "Finnhub", "");
+        return !string.IsNullOrEmpty(dbKey) ? dbKey : _configApiKey;
     }
 
     public async Task<IEnumerable<MarketNews>> GetMarketNewsAsync(string category = "general", CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(_apiKey))
+        var apiKey = await GetApiKeyAsync();
+        if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogWarning("Finnhub API key not configured");
             return [];
@@ -27,7 +37,7 @@ public class FinnhubClient
 
         try
         {
-            var response = await _httpClient.GetAsync($"news?category={category}&token={_apiKey}", cancellationToken);
+            var response = await _httpClient.GetAsync($"news?category={category}&token={apiKey}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -56,7 +66,8 @@ public class FinnhubClient
 
     public async Task<IEnumerable<MarketNews>> GetCompanyNewsAsync(string symbol, DateTime from, DateTime to, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(_apiKey))
+        var apiKey = await GetApiKeyAsync();
+        if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogWarning("Finnhub API key not configured");
             return [];
@@ -66,7 +77,7 @@ public class FinnhubClient
         {
             var fromStr = from.ToString("yyyy-MM-dd");
             var toStr = to.ToString("yyyy-MM-dd");
-            var response = await _httpClient.GetAsync($"company-news?symbol={symbol}&from={fromStr}&to={toStr}&token={_apiKey}", cancellationToken);
+            var response = await _httpClient.GetAsync($"company-news?symbol={symbol}&from={fromStr}&to={toStr}&token={apiKey}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);

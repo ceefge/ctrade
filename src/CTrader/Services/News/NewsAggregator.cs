@@ -3,6 +3,7 @@ using CTrader.Data;
 using CTrader.Data.Entities;
 using CTrader.Models;
 using CTrader.Services.Configuration;
+using CTrader.Services.Logging;
 using Microsoft.EntityFrameworkCore;
 
 namespace CTrader.Services.News;
@@ -14,6 +15,7 @@ public class NewsAggregator : INewsAggregator
     private readonly AlphaVantageClient _alphaVantageClient;
     private readonly RssFeedClient _rssFeedClient;
     private readonly IParameterService _parameters;
+    private readonly IActivityLogger _activityLogger;
     private readonly ILogger<NewsAggregator> _logger;
 
     public NewsAggregator(
@@ -22,6 +24,7 @@ public class NewsAggregator : INewsAggregator
         AlphaVantageClient alphaVantageClient,
         RssFeedClient rssFeedClient,
         IParameterService parameters,
+        IActivityLogger activityLogger,
         ILogger<NewsAggregator> logger)
     {
         _contextFactory = contextFactory;
@@ -29,6 +32,7 @@ public class NewsAggregator : INewsAggregator
         _alphaVantageClient = alphaVantageClient;
         _rssFeedClient = rssFeedClient;
         _parameters = parameters;
+        _activityLogger = activityLogger;
         _logger = logger;
     }
 
@@ -67,6 +71,7 @@ public class NewsAggregator : INewsAggregator
         await CacheNewsAsync(deduplicated, cancellationToken);
 
         _logger.LogInformation("Fetched and cached {Count} news articles from {Sources}", deduplicated.Count, string.Join(", ", enabledSources));
+        await _activityLogger.LogSuccessAsync("News", $"{deduplicated.Count} News-Artikel abgerufen und gecacht (Quellen: {string.Join(", ", enabledSources)})", source: "NewsAggregator");
 
         return deduplicated;
     }

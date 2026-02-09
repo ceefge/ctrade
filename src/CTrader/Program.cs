@@ -44,7 +44,15 @@ builder.Services.AddScoped<CostCalculator>();
 builder.Services.AddScoped<IRiskManager, RiskManager>();
 
 // Trading (Singleton for background service)
-builder.Services.AddSingleton<IBrokerConnector, IbGatewayConnector>();
+var simulateConnection = builder.Configuration.GetValue("IbGateway:SimulateConnection", true);
+if (simulateConnection)
+{
+    builder.Services.AddSingleton<IBrokerConnector, SimulatedBrokerConnector>();
+}
+else
+{
+    builder.Services.AddSingleton<IBrokerConnector, IbGatewayConnector>();
+}
 builder.Services.AddSingleton<TradingService>();
 builder.Services.AddSingleton<ITradingService>(sp => sp.GetRequiredService<TradingService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TradingService>());

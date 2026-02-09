@@ -1,6 +1,7 @@
 using CTrader.Models;
 using CTrader.Services.Analysis;
 using CTrader.Services.Configuration;
+using CTrader.Services.Logging;
 using CTrader.Services.News;
 using CTrader.Services.Risk;
 
@@ -9,6 +10,7 @@ namespace CTrader.Services.Trading;
 public class TradingService : BackgroundService, ITradingService
 {
     private readonly ILogger<TradingService> _logger;
+    private readonly IActivityLogger _activityLogger;
     private readonly IBrokerConnector _broker;
     private readonly INewsAggregator _newsAggregator;
     private readonly IMarketAnalyzer _marketAnalyzer;
@@ -32,6 +34,7 @@ public class TradingService : BackgroundService, ITradingService
 
     public TradingService(
         ILogger<TradingService> logger,
+        IActivityLogger activityLogger,
         IBrokerConnector broker,
         INewsAggregator newsAggregator,
         IMarketAnalyzer marketAnalyzer,
@@ -39,6 +42,7 @@ public class TradingService : BackgroundService, ITradingService
         IParameterService parameters)
     {
         _logger = logger;
+        _activityLogger = activityLogger;
         _broker = broker;
         _newsAggregator = newsAggregator;
         _marketAnalyzer = marketAnalyzer;
@@ -55,17 +59,31 @@ public class TradingService : BackgroundService, ITradingService
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Trading Service starting");
+        await _activityLogger.LogInfoAsync("System", "Trading Service gestartet", source: "TradingService");
         _isRunning = true;
         StatusChanged?.Invoke(this, true);
 
-        try
+        // Try connecting with retries - IB Gateway may not be ready yet
+        var maxRetries = 36; // ~3 minutes of retries (2FA login can take time)
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
-            await _broker.ConnectAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to connect to broker");
-            _lastError = ex.Message;
+            try
+            {
+                await _broker.ConnectAsync(cancellationToken);
+                await _activityLogger.LogSuccessAsync("System", "Broker verbunden", source: "TradingService");
+                break;
+            }
+            catch (Exception ex) when (attempt < maxRetries)
+            {
+                _logger.LogWarning("Broker connection attempt {Attempt}/{MaxRetries} failed: {Message}", attempt, maxRetries, ex.Message);
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to connect to broker after {MaxRetries} attempts", maxRetries);
+                _lastError = ex.Message;
+                await _activityLogger.LogErrorAsync("System", $"Broker-Verbindung fehlgeschlagen: {ex.Message}", source: "TradingService");
+            }
         }
 
         await base.StartAsync(cancellationToken);
@@ -74,6 +92,7 @@ public class TradingService : BackgroundService, ITradingService
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Trading Service stopping");
+        await _activityLogger.LogInfoAsync("System", "Trading Service gestoppt", source: "TradingService");
         _isRunning = false;
         StatusChanged?.Invoke(this, false);
 
@@ -116,20 +135,22 @@ public class TradingService : BackgroundService, ITradingService
     private async Task RunTradingCycleAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting trading cycle");
+        await _activityLogger.LogInfoAsync("Trading", "Trading-Zyklus gestartet", source: "TradingService");
 
         // 1. Fetch latest news
         var news = await _newsAggregator.FetchLatestNewsAsync(cancellationToken);
-        _logger.LogInformation("Fetched {Count} news articles", news.Count());
+        await _activityLogger.LogInfoAsync("News", $"{news.Count()} News-Artikel abgerufen", source: "NewsAggregator");
 
         // 2. Analyze market regime
         var regime = await RunAnalysisAsync(cancellationToken);
-        _logger.LogInformation("Market regime: {Regime} (Confidence: {Confidence}%)", regime.Regime, regime.Confidence * 100);
+        await _activityLogger.LogInfoAsync("Analysis", $"Marktregime: {regime.Regime} (Konfidenz: {regime.Confidence * 100:F0}%)", source: "MarketAnalyzer");
 
         // 3. Check if regime allows trading
         var preferredRegimes = await _parameters.GetValueAsync<List<string>>("Strategy", "PreferredRegimes");
         if (preferredRegimes != null && !preferredRegimes.Contains(regime.Regime.ToString()))
         {
             _logger.LogInformation("Current regime {Regime} not in preferred regimes, skipping trades", regime.Regime);
+            await _activityLogger.LogWarningAsync("Trading", $"Regime {regime.Regime} nicht in bevorzugten Regimes - keine Trades", source: "TradingService");
             return;
         }
 
@@ -144,7 +165,7 @@ public class TradingService : BackgroundService, ITradingService
         }
 
         // 5. Look for entry opportunities (placeholder for actual strategy)
-        _logger.LogInformation("Trading cycle completed");
+        await _activityLogger.LogSuccessAsync("Trading", "Trading-Zyklus abgeschlossen", source: "TradingService");
     }
 
     public async Task<RegimeAnalysisResult> RunAnalysisAsync(CancellationToken cancellationToken = default)

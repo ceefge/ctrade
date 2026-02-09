@@ -58,6 +58,12 @@ desktop.ini
 *.coverage
 *.coveragexml
 
+# Temp build output
+tmp-build/
+
+# Windows NUL device artifact
+NUL
+
 # Misc
 *.log
 *.tmp
