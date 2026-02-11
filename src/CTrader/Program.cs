@@ -5,6 +5,7 @@ using CTrader.Services.Analysis.LlmClients;
 using CTrader.Services.Configuration;
 using CTrader.Services.News;
 using CTrader.Services.Logging;
+using CTrader.Services.Chat;
 using CTrader.Services.Risk;
 using CTrader.Services.Trading;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +43,7 @@ builder.Services.AddScoped<ILlmClient, AnthropicLlmClient>();
 builder.Services.AddScoped<IMarketAnalyzer, MarketAnalyzer>();
 builder.Services.AddScoped<CostCalculator>();
 builder.Services.AddScoped<IRiskManager, RiskManager>();
+builder.Services.AddScoped<IChatService, ChatService>();
 
 // Trading (Singleton for background service)
 var simulateConnection = builder.Configuration.GetValue("IbGateway:SimulateConnection", true);

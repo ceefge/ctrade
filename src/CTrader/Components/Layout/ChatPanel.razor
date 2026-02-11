@@ -1,0 +1,163 @@
+@using CTrader.Services.Chat
+@inject IChatService ChatService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (_isOpen)
+{
+    <div class="chat-panel" @ref="_panelElement">
+        <div class="chat-header">
+            <div class="chat-resize-handle" @ref="_resizeHandle" title="Größe ändern">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" opacity="0.5">
+                    <circle cx="2" cy="2" r="1.5"/><circle cx="6" cy="2" r="1.5"/><circle cx="2" cy="6" r="1.5"/><circle cx="6" cy="6" r="1.5"/><circle cx="2" cy="10" r="1.5"/><circle cx="6" cy="10" r="1.5"/>
+                </svg>
+            </div>
+            <span>CTrader Assistent</span>
+            <div>
+                <button class="chat-header-btn" title="Chat leeren" @onclick="ClearChat">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H5.5l1-1h3l1 1h2.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                    </svg>
+                </button>
+                <button class="chat-header-btn" title="Schließen" @onclick="ToggleChat">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="chat-messages" @ref="_messagesContainer">
+            @if (!ChatService.Messages.Any())
+            {
+                <div class="chat-welcome">
+                    <strong>Willkommen!</strong><br/>
+                    Ich bin der CTrader-Assistent. Stellen Sie mir Fragen zur App, z.B.:
+                    <ul class="mt-2 mb-0">
+                        <li>Was zeigt das Dashboard?</li>
+                        <li>Wie konfiguriere ich API Keys?</li>
+                        <li>Was bedeutet das Marktregime?</li>
+                    </ul>
+                </div>
+            }
+
+            @foreach (var msg in ChatService.Messages)
+            {
+                <div class="chat-bubble @(msg.Role == "user" ? "chat-bubble-user" : "chat-bubble-assistant")">
+                    @msg.Content
+                </div>
+            }
+
+            @if (_isSending)
+            {
+                <div class="chat-bubble chat-bubble-assistant chat-thinking">
+                    Denkt nach...
+                </div>
+            }
+        </div>
+
+        <div class="chat-input-area">
+            <input type="text" class="chat-input" placeholder="Frage stellen..."
+                   @bind="_userInput" @bind:event="oninput"
+                   @onkeydown="HandleKeyDown"
+                   disabled="@_isSending" />
+            <button class="chat-send-btn" @onclick="SendMessage" disabled="@(_isSending || string.IsNullOrWhiteSpace(_userInput))">
+                <svg width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.5.5 0 0 1-.928.086l-2.577-5.155L1.485 7.586a.5.5 0 0 1 .086-.928L16.118.039a.5.5 0 0 1 .536.107zM6.636 10.07l2.761 5.521 4.718-11.795-7.479 6.274zM1.884 7.51l5.522 2.761 6.274-7.48L1.884 7.51z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+}
+
+<button class="chat-fab @(_isOpen ? "chat-fab-hidden" : "")" @onclick="ToggleChat" title="Chat-Assistent öffnen">
+    <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M2.678 11.894a1 1 0 0 1 .287.801 10.97 10.97 0 0 1-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 0 1 .71-.074A8.06 8.06 0 0 0 8 14c4.418 0 7-2.239 7-5s-2.582-5-7-5-7 2.239-7 5c0 1.127.456 2.182 1.255 3.024a1 1 0 0 1 .284.87l-.091.48a.5.5 0 0 0 .69.566l1.005-.43.26-.112z"/>
+    </svg>
+</button>
+
+@code {
+    private bool _isOpen;
+    private bool _isSending;
+    private string _userInput = "";
+    private ElementReference _messagesContainer;
+    private ElementReference _panelElement;
+    private ElementReference _resizeHandle;
+    private IJSObjectReference? _jsModule;
+    private bool _resizeInitialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat.js");
+        }
+
+        if (_isOpen && _jsModule != null)
+        {
+            try
+            {
+                if (!_resizeInitialized)
+                {
+                    await _jsModule.InvokeVoidAsync("initResize", _panelElement, _resizeHandle);
+                    _resizeInitialized = true;
+                }
+                await _jsModule.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+            }
+            catch
+            {
+                // Element may not be rendered yet
+            }
+        }
+    }
+
+    private void ToggleChat()
+    {
+        _isOpen = !_isOpen;
+        if (_isOpen) _resizeInitialized = false;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !_isSending && !string.IsNullOrWhiteSpace(_userInput))
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_userInput) || _isSending) return;
+
+        var message = _userInput.Trim();
+        _userInput = "";
+        _isSending = true;
+        StateHasChanged();
+
+        await ChatService.SendMessageAsync(message);
+
+        _isSending = false;
+        StateHasChanged();
+    }
+
+    private void ClearChat()
+    {
+        ChatService.ClearHistory();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsModule != null)
+        {
+            try
+            {
+                await _jsModule.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disposal errors during circuit disconnect
+            }
+        }
+    }
+}

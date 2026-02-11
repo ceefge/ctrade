@@ -30,7 +30,12 @@
       "Bash(git clone:*)",
       "Bash(findstr:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(git status:*)"
+      "Bash(git status:*)",
+      "Bash(Select-String:*)",
+      "Bash(Select-String -NotMatch \"MSB3027|MSB3021|MSB3026|blazor-error|warning\")",
+      "Bash(taskkill:*)",
+      "Bash(tasklist)",
+      "Bash(dotnet run:*)"
     ]
   }
 }

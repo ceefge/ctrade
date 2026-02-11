@@ -5,7 +5,31 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>CTrader</RootNamespace>
+    <VersionPrefix>0.9</VersionPrefix>
   </PropertyGroup>
+
+  <!-- Exclude BuildInfo.g.cs from default SDK globbing (target adds it explicitly) -->
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);BuildInfo.g.cs</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <!-- Auto-increment build number on each build -->
+  <Target Name="IncrementBuildNumber" BeforeTargets="CoreCompile">
+    <ReadLinesFromFile File="build-number.txt" Condition="Exists('build-number.txt')">
+      <Output TaskParameter="Lines" PropertyName="CurrentBuildNumber" />
+    </ReadLinesFromFile>
+    <PropertyGroup Condition="!Exists('build-number.txt')">
+      <CurrentBuildNumber>0</CurrentBuildNumber>
+    </PropertyGroup>
+    <PropertyGroup>
+      <NewBuildNumber>$([MSBuild]::Add($(CurrentBuildNumber), 1))</NewBuildNumber>
+    </PropertyGroup>
+    <WriteLinesToFile File="build-number.txt" Lines="$(NewBuildNumber)" Overwrite="true" />
+    <Exec Command="echo namespace CTrader; public static class BuildInfo { public const string Version = &quot;$(VersionPrefix).$(NewBuildNumber)&quot;; } &gt; BuildInfo.g.cs" />
+    <ItemGroup>
+      <Compile Include="BuildInfo.g.cs" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <!-- Database -->
@@ -18,13 +42,6 @@
     <!-- IB TWS API - Vendored C# source from tws-api-dotnet-standard -->
     <!-- Original: https://github.com/amittleider/tws-api-dotnet-standard -->
     <!-- Source files in Lib/IbApi/ are compiled directly into the project -->
-  </ItemGroup>
-
-  <!-- Suppress nullable warnings for vendored IB API source -->
-  <ItemGroup>
-    <Compile Update="Lib\IbApi\**\*.cs">
-      <NoWarn>CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625</NoWarn>
-    </Compile>
   </ItemGroup>
 
   <ItemGroup>

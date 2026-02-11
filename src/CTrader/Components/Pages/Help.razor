@@ -1,0 +1,80 @@
+@page "/help"
+@using CTrader.Services.Help
+
+<PageTitle>Hilfe - CTrader</PageTitle>
+
+<div class="d-flex justify-content-between align-items-start mb-0">
+    <div></div>
+    <span class="text-muted small">Version @BuildInfo.Version</span>
+</div>
+
+<div class="d-flex">
+    <nav class="help-sidebar me-4 d-none d-lg-block">
+        <h6 class="text-muted mb-3">Inhaltsverzeichnis</h6>
+        <ul class="list-unstyled">
+            @foreach (var item in HelpContent.Sections)
+            {
+                <li class="mb-1">
+                    <a href="/help#@item.Id" class="help-nav-link @(_activeSection == item.Id ? "active" : "")">
+                        @item.Title
+                    </a>
+                </li>
+            }
+        </ul>
+    </nav>
+
+    <div class="flex-grow-1">
+        <h1 class="mb-4">Hilfe</h1>
+        <p class="text-muted mb-4">Willkommen in der CTrader-Hilfe. Hier finden Sie Informationen zu allen Funktionen der Anwendung. Nutzen Sie auch den KI-Assistenten (Chat-Symbol unten rechts) für interaktive Hilfe.</p>
+
+        @foreach (var item in HelpContent.Sections)
+        {
+            <div id="@item.Id" class="card mb-4 help-section">
+                <div class="card-header">
+                    <h5 class="mb-0">@item.Title</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">@item.Description</p>
+
+                    @foreach (var (topic, content) in item.Topics)
+                    {
+                        <div class="mb-3">
+                            <h6>@topic</h6>
+                            <div class="help-content">
+                                @foreach (var line in content.Split('\n'))
+                                {
+                                    @if (line.StartsWith("- **"))
+                                    {
+                                        var parts = line[2..].Split("**:");
+                                        if (parts.Length == 2)
+                                        {
+                                            <div class="ms-3 mb-1">
+                                                <strong>@parts[0].Trim('*', ' ')</strong>: @parts[1].Trim()
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="ms-3 mb-1">@line.TrimStart('-', ' ')</div>
+                                        }
+                                    }
+                                    else if (line.StartsWith("- "))
+                                    {
+                                        <div class="ms-3 mb-1">@line.TrimStart('-', ' ')</div>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(line))
+                                    {
+                                        <p class="mb-1">@line</p>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string _activeSection = "dashboard";
+}
