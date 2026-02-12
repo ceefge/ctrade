@@ -81,6 +81,92 @@
 
 <div class="row">
     <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Aktien-Ranking</span>
+                <button class="btn btn-sm btn-outline-primary" @onclick="GenerateRankingAsync" disabled="@_isGeneratingRanking">
+                    @(_isGeneratingRanking ? "Wird erstellt..." : "Ranking erstellen")
+                </button>
+            </div>
+            <div class="card-body">
+                @if (_isGeneratingRanking)
+                {
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                        <span>Aktien werden analysiert...</span>
+                    </div>
+                }
+                else if (_stockRanking != null && _stockRanking.Stocks.Count > 0)
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Symbol</th>
+                                    <th>Name</th>
+                                    <th>Score</th>
+                                    <th>Signal</th>
+                                    <th>Begründung</th>
+                                    <th>Erwähnungen</th>
+                                    <th>Sentiment</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var stock in _stockRanking.Stocks)
+                                {
+                                    <tr>
+                                        <td>@stock.Rank</td>
+                                        <td><a href="/stock/@stock.Symbol"><strong>@stock.Symbol</strong></a></td>
+                                        <td class="text-muted">@stock.CompanyName</td>
+                                        <td style="min-width:120px">
+                                            <div class="progress" style="height:18px">
+                                                <div class="progress-bar @GetScoreBarClass(stock.Score)"
+                                                     role="progressbar"
+                                                     style="width:@((stock.Score * 100).ToString("F0"))%">
+                                                    @stock.Score.ToString("F2")
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="badge @GetSignalBadgeClass(stock.Signal)">@stock.Signal</span>
+                                        </td>
+                                        <td>@stock.Reasoning</td>
+                                        <td>@stock.MentionCount</td>
+                                        <td>
+                                            @if (stock.AvgSentiment.HasValue)
+                                            {
+                                                <span class="badge @GetSentimentBadgeClass(stock.AvgSentiment.Value)">
+                                                    @stock.AvgSentiment.Value.ToString("F2")
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-muted small mt-2">
+                        Analysiert: @_stockRanking.AnalyzedAt.ToString("g") | @_stockRanking.NewsArticlesAnalyzed Artikel ausgewertet
+                    </div>
+                }
+                else if (_stockRanking != null && _stockRanking.Stocks.Count == 0)
+                {
+                    <div class="alert alert-info mb-0">
+                        Keine Aktien-Symbole in den @_stockRanking.NewsArticlesAnalyzed Nachrichtenartikeln gefunden. Laden Sie zuerst aktuelle News über den "Refresh"-Button.
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">Noch kein Ranking vorhanden. Klicken Sie auf "Ranking erstellen", um die Top-Aktien aus den aktuellen News zu ermitteln.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>Recent News</span>
@@ -123,7 +209,9 @@
 @code {
     private bool _isAnalyzing;
     private bool _isLoadingNews;
+    private bool _isGeneratingRanking;
     private RegimeAnalysisResult? _currentRegime;
+    private StockRankingResult? _stockRanking;
     private List<MarketNews> _recentNews = [];
 
     protected override async Task OnInitializedAsync()
@@ -180,6 +268,37 @@
         MarketRegime.Neutral => "bg-secondary",
         MarketRegime.HighVolatility => "bg-warning text-dark",
         MarketRegime.Crisis => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private async Task GenerateRankingAsync()
+    {
+        _isGeneratingRanking = true;
+        try
+        {
+            var news = _recentNews.Count > 0
+                ? _recentNews
+                : (await NewsAggregator.GetCachedNewsAsync(48)).ToList();
+
+            _stockRanking = await MarketAnalyzer.GenerateStockRankingAsync(news);
+        }
+        finally
+        {
+            _isGeneratingRanking = false;
+        }
+    }
+
+    private static string GetScoreBarClass(decimal score) => score switch
+    {
+        >= 0.7m => "bg-success",
+        >= 0.4m => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
+
+    private static string GetSignalBadgeClass(string signal) => signal switch
+    {
+        "Bullish" => "bg-success",
+        "Bearish" => "bg-danger",
         _ => "bg-secondary"
     };
 

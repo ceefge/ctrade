@@ -1,0 +1,316 @@
+@page "/stock/{Symbol}"
+@using CTrader.Models
+@using CTrader.Services.News
+@using CTrader.Services.Analysis
+@using CTrader.Services.Trading
+@inject INewsAggregator NewsAggregator
+@inject FinnhubClient FinnhubClient
+@inject IMarketAnalyzer MarketAnalyzer
+@inject IBrokerConnector BrokerConnector
+@inject NavigationManager Navigation
+
+<PageTitle>@Symbol - Aktiendetail - CTrader</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-0">@Symbol</h1>
+        @if (_detail != null && !string.IsNullOrEmpty(_detail.CompanyName))
+        {
+            <span class="text-muted fs-5">@_detail.CompanyName</span>
+        }
+    </div>
+    <div class="d-flex align-items-center gap-3">
+        @if (_detail?.CurrentPrice != null)
+        {
+            <span class="fs-4 fw-bold">$@_detail.CurrentPrice.Value.ToString("F2")</span>
+        }
+        <button class="btn btn-outline-secondary" @onclick="GoBack">
+            &larr; Zurück zum Dashboard
+        </button>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <div class="spinner-border me-3" role="status"></div>
+        <span class="fs-5">Aktie wird analysiert...</span>
+    </div>
+}
+else if (_detail != null)
+{
+    <div class="row g-4">
+        @* Technische Analyse *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">Technische Analyse</span>
+                    <span class="badge @GetTrendBadgeClass(_detail.Technical.Trend)">@_detail.Technical.Trend</span>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(_detail.Technical.SignalSummary))
+                    {
+                        <p>@_detail.Technical.SignalSummary</p>
+                    }
+                    @if (_detail.Technical.Indicators.Count > 0)
+                    {
+                        <h6 class="mt-3">Indikatoren</h6>
+                        <ul class="list-unstyled mb-3">
+                            @foreach (var indicator in _detail.Technical.Indicators)
+                            {
+                                <li class="mb-1">
+                                    <span class="badge bg-light text-dark border me-1">&bull;</span> @indicator
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (!string.IsNullOrEmpty(_detail.Technical.Outlook))
+                    {
+                        <h6>Ausblick</h6>
+                        <p class="mb-2">@_detail.Technical.Outlook</p>
+                    }
+                    <div>
+                        <strong>Risiko:</strong>
+                        <span class="badge @GetRiskBadgeClass(_detail.Technical.RiskLevel)">@_detail.Technical.RiskLevel</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Fundamentalanalyse *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-bold">Fundamentalanalyse</div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(_detail.Fundamental.CompanyProfile))
+                    {
+                        <p>@_detail.Fundamental.CompanyProfile</p>
+                    }
+                    @if (_detail.Fundamental.KeyMetrics.Count > 0)
+                    {
+                        <h6>Kennzahlen</h6>
+                        <div class="mb-3">
+                            @foreach (var metric in _detail.Fundamental.KeyMetrics)
+                            {
+                                <span class="badge bg-info text-dark me-1 mb-1">@metric</span>
+                            }
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_detail.Fundamental.FinancialHealth))
+                    {
+                        <h6>Finanzielle Gesundheit</h6>
+                        <p class="mb-2">@_detail.Fundamental.FinancialHealth</p>
+                    }
+                    @if (!string.IsNullOrEmpty(_detail.Fundamental.GrowthOutlook))
+                    {
+                        <h6>Wachstumsaussichten</h6>
+                        <p class="mb-2">@_detail.Fundamental.GrowthOutlook</p>
+                    }
+                    @if (_detail.Fundamental.Catalysts.Count > 0)
+                    {
+                        <h6>Katalysatoren</h6>
+                        <ul class="mb-0">
+                            @foreach (var catalyst in _detail.Fundamental.Catalysts)
+                            {
+                                <li>@catalyst</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* Forum-Erwähnungen *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-bold">Forum-Erwähnungen</div>
+                <div class="card-body d-flex align-items-center justify-content-center">
+                    <div class="text-center text-muted py-4">
+                        <div class="fs-1 mb-2">💬</div>
+                        <p class="mb-0">Demnächst verfügbar</p>
+                        <small>Forum-Integration ist in Planung.</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Nachrichten-Erwähnungen *@
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">Nachrichten-Erwähnungen</span>
+                    <div>
+                        @if (_detail.News.TotalMentions > 0)
+                        {
+                            <span class="badge bg-secondary me-1">@_detail.News.TotalMentions Artikel</span>
+                            <span class="badge @GetSentimentBadgeClass(_detail.News.AverageSentiment)">
+                                Ø @_detail.News.AverageSentiment.ToString("F2")
+                            </span>
+                        }
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(_detail.News.SentimentTrend) && _detail.News.SentimentTrend != "Stabil")
+                    {
+                        <div class="mb-2">
+                            <strong>Sentiment-Trend:</strong>
+                            <span class="badge @GetTrendBadgeClass(_detail.News.SentimentTrend)">@_detail.News.SentimentTrend</span>
+                        </div>
+                    }
+                    @if (_detail.News.RecentArticles.Count > 0)
+                    {
+                        <div style="max-height: 350px; overflow-y: auto;">
+                            <div class="list-group list-group-flush">
+                                @foreach (var article in _detail.News.RecentArticles)
+                                {
+                                    <div class="list-group-item px-0">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                @if (!string.IsNullOrEmpty(article.Url))
+                                                {
+                                                    <a href="@article.Url" target="_blank" rel="noopener" class="text-decoration-none">
+                                                        @article.Headline
+                                                    </a>
+                                                }
+                                                else
+                                                {
+                                                    @article.Headline
+                                                }
+                                                <br />
+                                                <small class="text-muted">@article.Source — @article.PublishedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                                            </div>
+                                            @if (article.Sentiment.HasValue)
+                                            {
+                                                <span class="badge @GetSentimentBadgeClass(article.Sentiment.Value) ms-2">
+                                                    @article.Sentiment.Value.ToString("F2")
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">Keine Nachrichtenartikel zu diesem Symbol gefunden.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-muted small mt-3">
+        Analysiert: @_detail.AnalyzedAt.ToString("g")
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@code {
+    [Parameter]
+    public string Symbol { get; set; } = string.Empty;
+
+    private StockDetailResult? _detail;
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadDetailAsync();
+    }
+
+    private async Task LoadDetailAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            Symbol = Symbol.ToUpperInvariant();
+
+            // Fetch news from cache and Finnhub in parallel
+            var cachedNewsTask = NewsAggregator.GetNewsBySymbolAsync(Symbol, 48);
+            var finnhubNewsTask = SafeFetchFinnhubNews();
+            var priceTask = SafeGetPrice();
+
+            await Task.WhenAll(cachedNewsTask, finnhubNewsTask, priceTask);
+
+            var cachedNews = (await cachedNewsTask).ToList();
+            var finnhubNews = await finnhubNewsTask;
+            var price = await priceTask;
+
+            // Merge and deduplicate by headline
+            var seen = new HashSet<string>(cachedNews.Select(n => n.Headline), StringComparer.OrdinalIgnoreCase);
+            foreach (var article in finnhubNews)
+            {
+                if (seen.Add(article.Headline))
+                    cachedNews.Add(article);
+            }
+
+            _detail = await MarketAnalyzer.AnalyzeStockDetailAsync(Symbol, cachedNews, price);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Fehler beim Laden der Aktiendetails: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task<List<MarketNews>> SafeFetchFinnhubNews()
+    {
+        try
+        {
+            var from = DateTime.UtcNow.AddDays(-7);
+            var to = DateTime.UtcNow;
+            return (await FinnhubClient.GetCompanyNewsAsync(Symbol, from, to)).ToList();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private async Task<decimal?> SafeGetPrice()
+    {
+        try
+        {
+            if (BrokerConnector.IsConnected)
+                return await BrokerConnector.GetCurrentPriceAsync(Symbol);
+        }
+        catch { }
+        return null;
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private static string GetTrendBadgeClass(string trend) => trend switch
+    {
+        "Aufwärts" or "Steigend" => "bg-success",
+        "Abwärts" or "Fallend" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string GetRiskBadgeClass(string risk) => risk switch
+    {
+        "Niedrig" => "bg-success",
+        "Hoch" => "bg-danger",
+        _ => "bg-warning text-dark"
+    };
+
+    private static string GetSentimentBadgeClass(decimal score) => score switch
+    {
+        > 0.2m => "bg-success",
+        < -0.2m => "bg-danger",
+        _ => "bg-secondary"
+    };
+}
