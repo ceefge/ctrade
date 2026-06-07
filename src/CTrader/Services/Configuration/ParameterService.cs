@@ -123,7 +123,27 @@ public class ParameterService : IParameterService
         }
 
         await context.SaveChangesAsync();
-        _logger.LogInformation("Parameter {Category}.{Key} set to {Value}", category, key, stringValue);
+        _logger.LogInformation("Parameter {Category}.{Key} set to {Value}", category, key, MaskIfSecret(category, key, stringValue));
+    }
+
+    private static readonly string[] SecretKeyHints = ["key", "secret", "password", "token", "totp"];
+
+    /// <summary>
+    /// Masks values that look like credentials so they never reach the logs.
+    /// Keeps the last 4 characters for traceability when the value is long enough.
+    /// </summary>
+    private static string MaskIfSecret(string category, string key, string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        var isSecret = string.Equals(category, "ApiKeys", StringComparison.OrdinalIgnoreCase)
+            || SecretKeyHints.Any(hint => key.Contains(hint, StringComparison.OrdinalIgnoreCase));
+
+        if (!isSecret)
+            return value;
+
+        return value.Length <= 4 ? "****" : new string('*', value.Length - 4) + value[^4..];
     }
 
     public async Task DeleteAsync(string category, string key)
