@@ -22,8 +22,10 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
     private Thread? _readerThread;
 
     private volatile bool _isConnected;
+    private volatile bool _stopRequested;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
     private CancellationTokenSource? _reconnectCts;
+    private int _reconnecting; // 0 = idle, 1 = a reconnect loop is running
     private readonly int _requestTimeoutMs;
 
     public bool IsConnected => _isConnected;
@@ -51,6 +53,9 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
         try
         {
             if (_isConnected) return;
+
+            // A successful (re)connect attempt clears any prior stop request.
+            _stopRequested = false;
 
             // Port from DB (Configuration page), host from env var (Docker) or DB
             var configHost = _configuration["IbGateway:Host"];
@@ -91,16 +96,29 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
                 throw new InvalidOperationException($"Failed to connect to IB Gateway at {host}:{port} (serverVersion={_clientSocket.ServerVersion})");
             }
 
-            // Start the EReader message pump
-            _reader = new EReader(_clientSocket, _signal);
-            _reader.Start();
+            // Start the EReader message pump. Capture locals so that a stale
+            // reader thread left over from a previous connection operates on its
+            // own socket/signal and exits when that socket closes, instead of
+            // racing against fields a reconnect has already reassigned.
+            var socket = _clientSocket;
+            var signal = _signal;
+            var reader = new EReader(socket, signal);
+            _reader = reader;
+            reader.Start();
 
             _readerThread = new Thread(() =>
             {
-                while (_clientSocket.IsConnected())
+                try
                 {
-                    _signal.waitForSignal();
-                    _reader.processMsgs();
+                    while (socket.IsConnected())
+                    {
+                        signal.waitForSignal();
+                        reader.processMsgs();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "IB EReader thread terminated");
                 }
             })
             {
@@ -131,10 +149,17 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
 
     public async Task DisconnectAsync()
     {
+        // Signal intent and cancel any running reconnect loop before taking the
+        // lock so it stops promptly even if it is mid-attempt.
+        _stopRequested = true;
+        try { _reconnectCts?.Cancel(); } catch (ObjectDisposedException) { }
+
         await _connectLock.WaitAsync();
         try
         {
-            _reconnectCts?.Cancel();
+            // Re-assert inside the lock so an in-flight reconnect's ConnectAsync
+            // (which clears the flag) cannot revive auto-reconnect afterwards.
+            _stopRequested = true;
             _requestManager.CancelAllPending("Disconnecting");
 
             if (_clientSocket?.IsConnected() == true)
@@ -230,7 +255,8 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
         var tcs = _requestManager.RegisterAccountRequest(requestId);
 
         using var cts = new CancellationTokenSource(_requestTimeoutMs);
-        cts.Token.Register(() => _requestManager.TryCompleteAccountRequest(requestId, 0m));
+        cts.Token.Register(() => _requestManager.TryFailAccountRequest(
+            requestId, new TimeoutException("Account summary request timed out")));
 
         _clientSocket!.reqAccountSummary(requestId, "All", "NetLiquidation");
 
@@ -261,7 +287,8 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
         };
 
         using var cts = new CancellationTokenSource(_requestTimeoutMs * 3);
-        cts.Token.Register(() => _requestManager.TryCompleteOrderRequest(orderId));
+        cts.Token.Register(() => _requestManager.TryFailOrderRequest(
+            orderId, new TimeoutException($"Order {orderId} for {symbol} was not acknowledged in time")));
 
         _logger.LogInformation("Placing market order: {Action} {Qty} {Symbol} (orderId={OrderId})",
             order.Action, quantity, symbol, orderId);
@@ -290,7 +317,8 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
         };
 
         using var cts = new CancellationTokenSource(_requestTimeoutMs * 3);
-        cts.Token.Register(() => _requestManager.TryCompleteOrderRequest(orderId));
+        cts.Token.Register(() => _requestManager.TryFailOrderRequest(
+            orderId, new TimeoutException($"Order {orderId} for {symbol} was not acknowledged in time")));
 
         _logger.LogInformation("Placing limit order: {Action} {Qty} {Symbol} @ {Price} (orderId={OrderId})",
             order.Action, quantity, symbol, price, orderId);
@@ -326,7 +354,15 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
         ConnectionStatusChanged?.Invoke(this, false);
         ErrorOccurred?.Invoke(this, "IB Gateway connection lost");
 
-        _ = ReconnectAsync();
+        // Don't auto-reconnect after a deliberate disconnect/dispose.
+        if (_stopRequested) return;
+
+        // Ensure only a single reconnect loop runs at a time, even if multiple
+        // connectionClosed callbacks arrive.
+        if (Interlocked.CompareExchange(ref _reconnecting, 1, 0) == 0)
+        {
+            _ = ReconnectAsync();
+        }
     }
 
     private void OnConnectionAcknowledged()
@@ -341,38 +377,52 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
 
     private async Task ReconnectAsync()
     {
-        _reconnectCts = new CancellationTokenSource();
-        var ct = _reconnectCts.Token;
-        var delay = TimeSpan.FromSeconds(5);
-        var maxDelay = TimeSpan.FromMinutes(2);
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _reconnectCts, cts);
+        try { previous?.Dispose(); } catch (ObjectDisposedException) { }
+        var ct = cts.Token;
 
-        while (!ct.IsCancellationRequested && !_isConnected)
+        try
         {
-            _logger.LogInformation("Reconnecting to IB Gateway in {Delay}s...", delay.TotalSeconds);
+            var delay = TimeSpan.FromSeconds(5);
+            var maxDelay = TimeSpan.FromMinutes(2);
 
-            try
+            while (!ct.IsCancellationRequested && !_isConnected && !_stopRequested)
             {
-                await Task.Delay(delay, ct);
-                await ConnectAsync(ct);
-                _logger.LogInformation("Reconnected to IB Gateway");
-                return;
+                _logger.LogInformation("Reconnecting to IB Gateway in {Delay}s...", delay.TotalSeconds);
+
+                try
+                {
+                    await Task.Delay(delay, ct);
+                    await ConnectAsync(ct);
+                    _logger.LogInformation("Reconnected to IB Gateway");
+                    return;
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Reconnection attempt failed");
+                    delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, maxDelay.TotalSeconds));
+                }
             }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Reconnection attempt failed");
-                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, maxDelay.TotalSeconds));
-            }
+        }
+        finally
+        {
+            // Clear the field only if it still points at our CTS, then dispose ours.
+            Interlocked.CompareExchange(ref _reconnectCts, null, cts);
+            cts.Dispose();
+            Interlocked.Exchange(ref _reconnecting, 0);
         }
     }
 
     public void Dispose()
     {
-        _reconnectCts?.Cancel();
-        _reconnectCts?.Dispose();
+        _stopRequested = true;
+        try { _reconnectCts?.Cancel(); } catch (ObjectDisposedException) { }
+        try { _reconnectCts?.Dispose(); } catch (ObjectDisposedException) { }
         _connectLock.Dispose();
 
         if (_clientSocket?.IsConnected() == true)

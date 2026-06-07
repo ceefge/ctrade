@@ -12,6 +12,12 @@ public class IbRequestManager
     private int _nextRequestId = 1000;
     private int _nextOrderId;
     private readonly ManualResetEventSlim _orderIdReady = new(false);
+    private readonly TimeSpan _orderIdTimeout;
+
+    public IbRequestManager(TimeSpan? orderIdTimeout = null)
+    {
+        _orderIdTimeout = orderIdTimeout ?? TimeSpan.FromSeconds(10);
+    }
 
     private readonly ConcurrentDictionary<int, TaskCompletionSource<decimal>> _priceRequests = new();
     private readonly ConcurrentDictionary<int, TaskCompletionSource<decimal>> _accountRequests = new();
@@ -31,7 +37,12 @@ public class IbRequestManager
 
     public int GetNextOrderId()
     {
-        _orderIdReady.Wait(TimeSpan.FromSeconds(10));
+        // Never place an order before IB has supplied a valid starting ID via
+        // nextValidId - otherwise we would submit order ID 0, which can collide
+        // with real orders.
+        if (!_orderIdReady.Wait(_orderIdTimeout))
+            throw new InvalidOperationException(
+                "No valid order ID received from IB Gateway (nextValidId timed out).");
         return Interlocked.Increment(ref _nextOrderId) - 1;
     }
 
@@ -76,11 +87,12 @@ public class IbRequestManager
 
     public void CompletePositionRequest()
     {
-        var tcs = _positionRequest;
+        // Atomically take ownership so a concurrent timeout (FailPositionRequest)
+        // and positionEnd can never both release the semaphore.
+        var tcs = Interlocked.Exchange(ref _positionRequest, null);
         if (tcs != null)
         {
             var result = new Dictionary<string, decimal>(_positionAccumulator);
-            _positionRequest = null;
             _positionAccumulator.Clear();
             _positionSemaphore.Release();
             tcs.TrySetResult(result);
@@ -89,10 +101,9 @@ public class IbRequestManager
 
     public void FailPositionRequest(Exception ex)
     {
-        var tcs = _positionRequest;
+        var tcs = Interlocked.Exchange(ref _positionRequest, null);
         if (tcs != null)
         {
-            _positionRequest = null;
             _positionAccumulator.Clear();
             _positionSemaphore.Release();
             tcs.TrySetException(ex);
@@ -112,6 +123,13 @@ public class IbRequestManager
     {
         if (_accountRequests.TryRemove(requestId, out var tcs))
             return tcs.TrySetResult(value);
+        return false;
+    }
+
+    public bool TryFailAccountRequest(int requestId, Exception ex)
+    {
+        if (_accountRequests.TryRemove(requestId, out var tcs))
+            return tcs.TrySetException(ex);
         return false;
     }
 
