@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using CTrader.Data;
 using CTrader.Data.Entities;
@@ -80,8 +81,8 @@ public class ParameterService : IParameterService
         return parameter.DataType.ToLower() switch
         {
             "string" => (T)(object)parameter.Value,
-            "int" => (T)(object)int.Parse(parameter.Value),
-            "decimal" => (T)(object)decimal.Parse(parameter.Value),
+            "int" => (T)(object)int.Parse(parameter.Value, CultureInfo.InvariantCulture),
+            "decimal" => (T)(object)decimal.Parse(parameter.Value, CultureInfo.InvariantCulture),
             "bool" => (T)(object)bool.Parse(parameter.Value),
             "json" => JsonSerializer.Deserialize<T>(parameter.Value)!,
             _ => JsonSerializer.Deserialize<T>(parameter.Value)!
@@ -97,7 +98,7 @@ public class ParameterService : IParameterService
         var stringValue = dataType.ToLower() switch
         {
             "json" => JsonSerializer.Serialize(value),
-            _ => value.ToString() ?? string.Empty
+            _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
         };
 
         if (existing != null)
