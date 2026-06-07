@@ -43,11 +43,6 @@ public class AnthropicLlmClient : ILlmClient
 
         try
         {
-            _httpClient.DefaultRequestHeaders.Remove("x-api-key");
-            _httpClient.DefaultRequestHeaders.Remove("anthropic-version");
-            _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
-            _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-
             var request = new AnthropicRequest
             {
                 Model = modelName,
@@ -60,9 +55,17 @@ public class AnthropicLlmClient : ILlmClient
             };
 
             var json = JsonSerializer.Serialize(request);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync(ApiUrl, content, cancellationToken);
+            // Set headers per-request rather than on the shared HttpClient's
+            // DefaultRequestHeaders, which is not thread-safe for concurrent calls.
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, ApiUrl)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            httpRequest.Headers.Add("x-api-key", apiKey);
+            httpRequest.Headers.Add("anthropic-version", "2023-06-01");
+
+            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
