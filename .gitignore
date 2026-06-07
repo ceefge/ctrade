@@ -41,11 +41,14 @@ appsettings.*.json
 !appsettings.json
 !appsettings.Development.json
 
-# SQLite database
+# SQLite database (the runtime DB lives in the same folder as the Data/ source on
+# Windows, so do NOT ignore the whole data/ dir - it would also exclude Data/ source code)
 *.db
 *.db-shm
 *.db-wal
-data/
+
+# Runtime log files written under the Data/ folder
+src/CTrader/Data/logs/
 
 # OS files
 .DS_Store

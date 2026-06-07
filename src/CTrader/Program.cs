@@ -61,11 +61,12 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<TradingService>())
 
 var app = builder.Build();
 
-// Ensure database is created and migrations applied
+// Apply EF Core migrations (baselining a pre-existing EnsureCreated database)
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext();
-    context.Database.EnsureCreated();
+    using var context = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext();
+    var dbLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitializer");
+    DatabaseInitializer.MigrateWithBaseline(context, dbLogger);
 }
 
 // Configure the HTTP request pipeline
