@@ -29,6 +29,8 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Trade>(entity =>
         {
+            entity.HasIndex(e => e.Symbol);
+            entity.HasIndex(e => e.ExecutedAt);
             entity.Property(e => e.Price).HasColumnType("decimal(18,4)");
             entity.Property(e => e.Commission).HasColumnType("decimal(18,4)");
         });
@@ -44,11 +46,13 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<NewsArticle>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PublishedAt);
             entity.Property(e => e.SentimentScore).HasColumnType("decimal(5,2)");
         });
 
         modelBuilder.Entity<RegimeAnalysis>(entity =>
         {
+            entity.HasIndex(e => e.AnalyzedAt);
             entity.Property(e => e.Confidence).HasColumnType("decimal(5,2)");
         });
 
@@ -64,6 +68,10 @@ public class AppDbContext : DbContext
 
     private static void SeedDefaultParameters(ModelBuilder modelBuilder)
     {
+        // Fixed timestamp so HasData seeding is deterministic - DateTime.UtcNow
+        // would change on every scaffold and churn each new migration.
+        var seededAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
         var parameters = new List<Parameter>
         {
             // Trading Parameters
@@ -90,6 +98,9 @@ public class AppDbContext : DbContext
             new() { Id = 13, Category = "News", Key = "MaxArticlesPerFetch", Value = "50", DataType = "int", Description = "Maximum articles per fetch" },
             new() { Id = 14, Category = "News", Key = "EnabledSources", Value = "[\"Finnhub\",\"AlphaVantage\",\"RSS\"]", DataType = "json", Description = "Enabled news sources" }
         };
+
+        foreach (var parameter in parameters)
+            parameter.UpdatedAt = seededAt;
 
         modelBuilder.Entity<Parameter>().HasData(parameters);
     }

@@ -58,7 +58,7 @@ public class RssFeedClient
 
             return feed.Items.Select(item => new MarketNews
             {
-                Id = $"rss_{sourceName}_{item.Id ?? item.Title?.Text?.GetHashCode().ToString() ?? Guid.NewGuid().ToString()}",
+                Id = $"rss_{sourceName}_{item.Id ?? (item.Title?.Text is { } title ? NewsId.Stable(title) : Guid.NewGuid().ToString())}",
                 Headline = item.Title?.Text ?? string.Empty,
                 Summary = item.Summary?.Text,
                 Source = $"RSS - {sourceName}",

@@ -94,8 +94,11 @@ public class NewsAggregator : INewsAggregator
         await using var context = await _contextFactory.CreateDbContextAsync();
         var cutoff = DateTime.UtcNow.AddHours(-hours);
 
+        // Symbols are stored as a JSON array, e.g. ["AAPL","MSFT"]. Match the
+        // quoted token so "BA" does not also match "BABA".
+        var quotedSymbol = "\"" + symbol + "\"";
         var articles = await context.NewsArticles
-            .Where(a => a.PublishedAt >= cutoff && a.Symbols != null && a.Symbols.Contains(symbol))
+            .Where(a => a.PublishedAt >= cutoff && a.Symbols != null && a.Symbols.Contains(quotedSymbol))
             .OrderByDescending(a => a.PublishedAt)
             .ToListAsync();
 

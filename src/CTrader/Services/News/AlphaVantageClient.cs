@@ -54,7 +54,7 @@ public class AlphaVantageClient
 
             return result?.Feed?.Select(item => new MarketNews
             {
-                Id = $"av_{item.TimePublished}_{item.Title?.GetHashCode()}",
+                Id = $"av_{item.TimePublished}_{NewsId.Stable(item.Title ?? string.Empty)}",
                 Headline = item.Title ?? string.Empty,
                 Summary = item.Summary,
                 Source = $"AlphaVantage - {item.Source}",
