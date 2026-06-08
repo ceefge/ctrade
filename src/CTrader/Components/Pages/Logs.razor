@@ -95,6 +95,13 @@
     {
         await RefreshLogs();
         await LoadRegimeHistory();
+
+        // Auto-select most recent log file
+        if (_logFiles.Count > 0)
+        {
+            _selectedLogFile = _logFiles[0];
+            await LoadLogContent();
+        }
     }
 
     private async Task RefreshLogs()
