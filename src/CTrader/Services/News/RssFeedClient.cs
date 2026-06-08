@@ -1,6 +1,7 @@
 using System.ServiceModel.Syndication;
 using System.Xml;
 using CTrader.Models;
+using CTrader.Services.Analysis;
 
 namespace CTrader.Services.News;
 
@@ -51,7 +52,9 @@ public class RssFeedClient
             response.EnsureSuccessStatusCode();
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = XmlReader.Create(stream);
+            // Harden against XXE / entity-expansion attacks from untrusted feeds.
+            var readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+            using var reader = XmlReader.Create(stream, readerSettings);
             var feed = SyndicationFeed.Load(reader);
 
             var sourceName = ExtractSourceName(url, feed.Title?.Text);
@@ -64,7 +67,7 @@ public class RssFeedClient
                 Source = $"RSS - {sourceName}",
                 Url = item.Links.FirstOrDefault()?.Uri?.ToString(),
                 PublishedAt = item.PublishDate.UtcDateTime,
-                Symbols = ExtractSymbols(item.Title?.Text, item.Summary?.Text)
+                Symbols = TickerExtractor.Extract(item.Title?.Text, item.Summary?.Text)
             });
         }
         catch (Exception ex)
@@ -81,22 +84,5 @@ public class RssFeedClient
 
         var uri = new Uri(url);
         return uri.Host.Replace("www.", "").Replace("feeds.", "");
-    }
-
-    private static List<string> ExtractSymbols(string? headline, string? summary)
-    {
-        var symbols = new List<string>();
-        var text = $"{headline} {summary}";
-
-        // Common stock symbols pattern ($XXX or stock tickers in caps)
-        var matches = System.Text.RegularExpressions.Regex.Matches(text, @"\$([A-Z]{1,5})\b|\b([A-Z]{2,5})\b(?=\s+(?:stock|shares|price|rises|falls|jumps|drops))");
-        foreach (System.Text.RegularExpressions.Match match in matches)
-        {
-            var symbol = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
-            if (!string.IsNullOrEmpty(symbol) && !symbols.Contains(symbol))
-                symbols.Add(symbol);
-        }
-
-        return symbols;
     }
 }

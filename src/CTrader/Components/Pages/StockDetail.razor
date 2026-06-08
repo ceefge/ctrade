@@ -8,12 +8,13 @@
 @inject IMarketAnalyzer MarketAnalyzer
 @inject IBrokerConnector BrokerConnector
 @inject NavigationManager Navigation
+@inject ILogger<StockDetail> Logger
 
-<PageTitle>@Symbol - Aktiendetail - CTrader</PageTitle>
+<PageTitle>@_symbol - Aktiendetail - CTrader</PageTitle>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1 class="mb-0">@Symbol</h1>
+        <h1 class="mb-0">@_symbol</h1>
         @if (_detail != null && !string.IsNullOrEmpty(_detail.CompanyName))
         {
             <span class="text-muted fs-5">@_detail.CompanyName</span>
@@ -216,9 +217,11 @@ else if (_error != null)
     private StockDetailResult? _detail;
     private bool _isLoading = true;
     private string? _error;
+    private string _symbol = string.Empty; // normalized (uppercase) - never mutate the [Parameter]
 
     protected override async Task OnParametersSetAsync()
     {
+        _symbol = Symbol.ToUpperInvariant();
         await LoadDetailAsync();
     }
 
@@ -230,10 +233,8 @@ else if (_error != null)
 
         try
         {
-            Symbol = Symbol.ToUpperInvariant();
-
             // Fetch news from cache and Finnhub in parallel
-            var cachedNewsTask = NewsAggregator.GetNewsBySymbolAsync(Symbol, 48);
+            var cachedNewsTask = NewsAggregator.GetNewsBySymbolAsync(_symbol, 48);
             var finnhubNewsTask = SafeFetchFinnhubNews();
             var priceTask = SafeGetPrice();
 
@@ -251,7 +252,7 @@ else if (_error != null)
                     cachedNews.Add(article);
             }
 
-            _detail = await MarketAnalyzer.AnalyzeStockDetailAsync(Symbol, cachedNews, price);
+            _detail = await MarketAnalyzer.AnalyzeStockDetailAsync(_symbol, cachedNews, price);
         }
         catch (Exception ex)
         {
@@ -269,10 +270,11 @@ else if (_error != null)
         {
             var from = DateTime.UtcNow.AddDays(-7);
             var to = DateTime.UtcNow;
-            return (await FinnhubClient.GetCompanyNewsAsync(Symbol, from, to)).ToList();
+            return (await FinnhubClient.GetCompanyNewsAsync(_symbol, from, to)).ToList();
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "Failed to fetch Finnhub news for {Symbol}", _symbol);
             return [];
         }
     }
@@ -282,9 +284,12 @@ else if (_error != null)
         try
         {
             if (BrokerConnector.IsConnected)
-                return await BrokerConnector.GetCurrentPriceAsync(Symbol);
+                return await BrokerConnector.GetCurrentPriceAsync(_symbol);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to fetch price for {Symbol}", _symbol);
+        }
         return null;
     }
 

@@ -215,41 +215,6 @@ Regeln:
         @"(?:\((?:NYSE|NASDAQ|AMEX):)?(\b[A-Z]{1,5}\b)(?:\))?",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    private static List<string> ExtractSymbolsFromText(string? headline, string? summary)
-    {
-        var symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var noise = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "CEO", "CFO", "CTO", "COO", "IPO", "SEC", "FDA", "ETF", "GDP", "CPI",
-            "EPS", "PE", "AI", "US", "USA", "UK", "EU", "USD", "EUR", "GBP",
-            "THE", "FOR", "AND", "NOT", "NEW", "ALL", "INC", "LTD", "LLC", "CORP",
-            "NYSE", "NASDAQ", "AMEX", "HAS", "ARE", "WAS", "NOW", "TOP", "BIG",
-            "UP", "ITS", "HOW", "WHY", "MAY", "CAN", "NET", "FED", "Q1", "Q2", "Q3", "Q4"
-        };
-
-        foreach (var text in new[] { headline, summary })
-        {
-            if (string.IsNullOrEmpty(text)) continue;
-
-            // Match $AAPL style
-            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(text, @"\$([A-Z]{1,5})\b"))
-                symbols.Add(m.Groups[1].Value);
-
-            // Match (NYSE:AAPL) or (NASDAQ:AAPL) style
-            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(text, @"\((?:NYSE|NASDAQ|AMEX):([A-Z]{1,5})\)"))
-                symbols.Add(m.Groups[1].Value);
-
-            // Match CAPS words near stock keywords
-            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(text, @"\b([A-Z]{2,5})\b(?=\s+(?:stock|shares|price|rises|falls|jumps|drops|earnings|revenue|Q[1-4]))"))
-            {
-                if (!noise.Contains(m.Groups[1].Value))
-                    symbols.Add(m.Groups[1].Value);
-            }
-        }
-
-        return symbols.Where(s => !noise.Contains(s)).ToList();
-    }
-
     public async Task<StockRankingResult> GenerateStockRankingAsync(IEnumerable<MarketNews> news, int topN = 10, CancellationToken cancellationToken = default)
     {
         var newsList = news.ToList();
@@ -257,7 +222,7 @@ Regeln:
         // Enrich: extract symbols from headlines for articles without explicit symbols
         foreach (var article in newsList.Where(n => n.Symbols.Count == 0))
         {
-            var extracted = ExtractSymbolsFromText(article.Headline, article.Summary);
+            var extracted = TickerExtractor.Extract(article.Headline, article.Summary);
             if (extracted.Count > 0)
                 article.Symbols = extracted;
         }
