@@ -53,6 +53,9 @@ src/CTrader/Data/logs/
 # Local launcher script (personal, machine-specific)
 start_claude_ctrader.cmd
 
+# Claude Code local settings (personal permission allowlist)
+.claude/settings.local.json
+
 # OS files
 .DS_Store
 Thumbs.db
