@@ -11,7 +11,8 @@ services:
       IBC_TOTP_SECRET: ${IB_TOTP_SECRET}
       VNC_SERVER: "yes"
       VNC_SERVER_PASSWORD: ${VNC_PASSWORD:-ctrader}
-      API_PORT: "4001"
+      # The API listens localhost-only inside the container; other containers must
+      # use the socat bridge port: paper -> 4004 (->4002), live -> 4003 (->4001).
     ports:
       - "5901:5900"
     volumes:
@@ -43,6 +44,7 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__Default=Data Source=/app/data/ctrader.db
       - IbGateway__Host=ib-gateway
+      - IbGateway__Port=4004  # socat bridge for paper mode (->4002); live would be 4003
       - IbGateway__SimulateConnection=false
       - Finnhub__ApiKey=${FINNHUB_API_KEY}
       - AlphaVantage__ApiKey=${ALPHA_VANTAGE_API_KEY}
