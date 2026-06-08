@@ -1,19 +1,28 @@
 using CTrader.Data;
 using CTrader.Data.Entities;
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace CTrader.Tests.Integration;
 
+// Uses a real SQLite in-memory database (not the EF in-memory provider) so that
+// relational constraints - unique indexes, NOT NULL, column types - are actually
+// enforced, matching the SQLite database the app uses in production.
 public class DatabaseIntegrationTests : IDisposable
 {
+    private readonly SqliteConnection _connection;
     private readonly AppDbContext _context;
 
     public DatabaseIntegrationTests()
     {
+        // The in-memory database lives as long as the connection stays open.
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
+
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseSqlite(_connection)
             .Options;
 
         _context = new AppDbContext(options);
@@ -23,6 +32,7 @@ public class DatabaseIntegrationTests : IDisposable
     public void Dispose()
     {
         _context.Dispose();
+        _connection.Dispose();
     }
 
     [Fact]
@@ -137,5 +147,33 @@ public class DatabaseIntegrationTests : IDisposable
         retrieved!.Quantity.Should().Be(100);
         retrieved.AvgCost.Should().Be(150m);
         retrieved.StopLoss.Should().Be(142.50m);
+    }
+
+    [Fact]
+    public async Task Parameters_ShouldEnforceUniqueCategoryKey()
+    {
+        // "Trading"/"MaxPositionSize" is already seeded - a duplicate must fail.
+        _context.Parameters.Add(new Parameter
+        {
+            Category = "Trading",
+            Key = "MaxPositionSize",
+            Value = "999",
+            DataType = "decimal"
+        });
+
+        Func<Task> act = async () => await _context.SaveChangesAsync();
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task Positions_ShouldEnforceUniqueSymbol()
+    {
+        _context.Positions.Add(new Position { Symbol = "AAPL", Quantity = 100, AvgCost = 150m, OpenedAt = DateTime.UtcNow });
+        await _context.SaveChangesAsync();
+
+        _context.Positions.Add(new Position { Symbol = "AAPL", Quantity = 50, AvgCost = 140m, OpenedAt = DateTime.UtcNow });
+
+        Func<Task> act = async () => await _context.SaveChangesAsync();
+        await act.Should().ThrowAsync<DbUpdateException>();
     }
 }
