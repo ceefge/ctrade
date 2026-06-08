@@ -50,6 +50,9 @@ appsettings.*.json
 # Runtime log files written under the Data/ folder
 src/CTrader/Data/logs/
 
+# Local launcher script (personal, machine-specific)
+start_claude_ctrader.cmd
+
 # OS files
 .DS_Store
 Thumbs.db
