@@ -53,34 +53,49 @@ public class TradingService : BackgroundService, ITradingService
         _isRunning = true;
         StatusChanged?.Invoke(this, true);
 
-        using var scope = _scopeFactory.CreateScope();
-        var activityLogger = scope.ServiceProvider.GetRequiredService<IActivityLogger>();
-        await activityLogger.LogInfoAsync("System", "Trading Service gestartet", source: "TradingService");
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var activityLogger = scope.ServiceProvider.GetRequiredService<IActivityLogger>();
+            await activityLogger.LogInfoAsync("System", "Trading Service gestartet", source: "TradingService");
+        }
 
-        // Try connecting with retries - IB Gateway may not be ready yet
-        var maxRetries = 36; // ~3 minutes of retries (2FA login can take time)
-        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        // Connection is established in ExecuteAsync (below) so that a slow or
+        // unavailable IB Gateway does not block host startup for up to 3 minutes.
+        await base.StartAsync(cancellationToken);
+    }
+
+    private async Task ConnectWithRetriesAsync(CancellationToken stoppingToken)
+    {
+        // IB Gateway may not be ready yet; 2FA login can take time.
+        const int maxRetries = 36; // ~3 minutes of retries
+        for (var attempt = 1; attempt <= maxRetries && !stoppingToken.IsCancellationRequested; attempt++)
         {
             try
             {
-                await _broker.ConnectAsync(cancellationToken);
+                await _broker.ConnectAsync(stoppingToken);
+                using var scope = _scopeFactory.CreateScope();
+                var activityLogger = scope.ServiceProvider.GetRequiredService<IActivityLogger>();
                 await activityLogger.LogSuccessAsync("System", "Broker verbunden", source: "TradingService");
-                break;
+                return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
             }
             catch (Exception ex) when (attempt < maxRetries)
             {
                 _logger.LogWarning("Broker connection attempt {Attempt}/{MaxRetries} failed: {Message}", attempt, maxRetries, ex.Message);
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to connect to broker after {MaxRetries} attempts", maxRetries);
                 _lastError = ex.Message;
+                using var scope = _scopeFactory.CreateScope();
+                var activityLogger = scope.ServiceProvider.GetRequiredService<IActivityLogger>();
                 await activityLogger.LogErrorAsync("System", $"Broker-Verbindung fehlgeschlagen: {ex.Message}", source: "TradingService");
             }
         }
-
-        await base.StartAsync(cancellationToken);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
@@ -101,6 +116,8 @@ public class TradingService : BackgroundService, ITradingService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await ConnectWithRetriesAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try

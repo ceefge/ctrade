@@ -4,6 +4,7 @@
 @inject IParameterService ParameterService
 @inject IConfiguration AppConfig
 @inject IWebHostEnvironment Environment
+@inject ILogger<Configuration> Logger
 
 <PageTitle>Konfiguration - CTrader</PageTitle>
 
@@ -540,16 +541,34 @@
     {
         if (_editingParam != null)
         {
-            await ParameterService.SetAsync(_editingParam.Category, _editingParam.Key, _editValue, _editingParam.DataType, _editingParam.Description);
-            await LoadParametersAsync();
-            CancelEdit();
+            try
+            {
+                await ParameterService.SetAsync(_editingParam.Category, _editingParam.Key, _editValue, _editingParam.DataType, _editingParam.Description);
+                await LoadParametersAsync();
+                CancelEdit();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to save parameter {Category}.{Key}", _editingParam.Category, _editingParam.Key);
+                _saveSuccess = false;
+                _saveMessage = $"Fehler beim Speichern: {ex.Message}";
+            }
         }
     }
 
     private async Task DeleteParameter(Parameter param)
     {
-        await ParameterService.DeleteAsync(param.Category, param.Key);
-        await LoadParametersAsync();
+        try
+        {
+            await ParameterService.DeleteAsync(param.Category, param.Key);
+            await LoadParametersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete parameter {Category}.{Key}", param.Category, param.Key);
+            _saveSuccess = false;
+            _saveMessage = $"Fehler beim Löschen: {ex.Message}";
+        }
     }
 
     private void ShowAddModal()
@@ -567,10 +586,19 @@
     {
         if (!string.IsNullOrEmpty(_newParam.Category) && !string.IsNullOrEmpty(_newParam.Key))
         {
-            await ParameterService.SetAsync(_newParam.Category, _newParam.Key, _newParam.Value ?? "", _newParam.DataType ?? "string", _newParam.Description);
-            await LoadCategoriesAsync();
-            await LoadParametersAsync();
-            HideAddModal();
+            try
+            {
+                await ParameterService.SetAsync(_newParam.Category, _newParam.Key, _newParam.Value ?? "", _newParam.DataType ?? "string", _newParam.Description);
+                await LoadCategoriesAsync();
+                await LoadParametersAsync();
+                HideAddModal();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to add parameter {Category}.{Key}", _newParam.Category, _newParam.Key);
+                _saveSuccess = false;
+                _saveMessage = $"Fehler beim Hinzufügen: {ex.Message}";
+            }
         }
     }
 

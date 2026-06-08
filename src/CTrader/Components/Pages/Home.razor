@@ -6,11 +6,20 @@
 @inject ITradingService TradingService
 @inject INewsAggregator NewsAggregator
 @inject IMarketAnalyzer MarketAnalyzer
+@inject ILogger<Home> Logger
 @implements IDisposable
 
 <PageTitle>Dashboard - CTrader</PageTitle>
 
 <h1>Dashboard</h1>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger alert-dismissible" role="alert">
+        @_error
+        <button type="button" class="btn-close" @onclick="() => _error = null"></button>
+    </div>
+}
 
 <div class="row">
     <div class="col-md-6">
@@ -214,6 +223,7 @@
     private RegimeAnalysisResult? _currentRegime;
     private StockRankingResult? _stockRanking;
     private List<MarketNews> _recentNews = [];
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
@@ -232,10 +242,16 @@
     private async Task RefreshNewsAsync()
     {
         _isLoadingNews = true;
+        _error = null;
         try
         {
             var news = await NewsAggregator.FetchLatestNewsAsync();
             _recentNews = news.ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh news");
+            _error = $"News konnten nicht aktualisiert werden: {ex.Message}";
         }
         finally
         {
@@ -246,9 +262,15 @@
     private async Task RunAnalysisAsync()
     {
         _isAnalyzing = true;
+        _error = null;
         try
         {
             _currentRegime = await TradingService.RunAnalysisAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to run market analysis");
+            _error = $"Analyse fehlgeschlagen: {ex.Message}";
         }
         finally
         {
@@ -275,6 +297,7 @@
     private async Task GenerateRankingAsync()
     {
         _isGeneratingRanking = true;
+        _error = null;
         try
         {
             var news = _recentNews.Count > 0
@@ -282,6 +305,11 @@
                 : (await NewsAggregator.GetCachedNewsAsync(48)).ToList();
 
             _stockRanking = await MarketAnalyzer.GenerateStockRankingAsync(news);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to generate stock ranking");
+            _error = $"Ranking konnte nicht erstellt werden: {ex.Message}";
         }
         finally
         {
