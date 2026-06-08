@@ -25,7 +25,10 @@
       <NewBuildNumber>$([MSBuild]::Add($(CurrentBuildNumber), 1))</NewBuildNumber>
     </PropertyGroup>
     <WriteLinesToFile File="build-number.txt" Lines="$(NewBuildNumber)" Overwrite="true" />
-    <Exec Command="echo namespace CTrader; public static class BuildInfo { public const string Version = &quot;$(VersionPrefix).$(NewBuildNumber)&quot;; } &gt; BuildInfo.g.cs" />
+    <!-- WriteLinesToFile is cross-platform (no shell), so this works in the Linux
+         build container too. %3B is an escaped ';' (raw ';' would split lines). -->
+    <WriteLinesToFile File="BuildInfo.g.cs" Overwrite="true"
+                      Lines="namespace CTrader%3B public static class BuildInfo { public const string Version = &quot;$(VersionPrefix).$(NewBuildNumber)&quot;%3B }" />
     <ItemGroup>
       <Compile Include="BuildInfo.g.cs" />
     </ItemGroup>
