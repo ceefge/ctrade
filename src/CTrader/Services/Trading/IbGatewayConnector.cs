@@ -177,42 +177,50 @@ public class IbGatewayConnector : IBrokerConnector, IDisposable
         }
     }
 
-    public async Task<decimal> GetCurrentPriceAsync(string symbol)
+    public Task<decimal> GetCurrentPriceAsync(string symbol)
+        => FetchSnapshotPriceAsync(IbContractFactory.CreateUsStock(symbol), $"Price request for {symbol}");
+
+    public Task<decimal> GetVixAsync()
+        => FetchSnapshotPriceAsync(IbContractFactory.CreateVixIndex(), "VIX request");
+
+    /// <summary>
+    /// Requests a one-time snapshot price using delayed data (type 3). If no data
+    /// arrives (e.g. market closed / no live delayed stream), retries once with
+    /// delayed-frozen (type 4), which returns the last available value, then
+    /// restores the default type.
+    /// </summary>
+    private async Task<decimal> FetchSnapshotPriceAsync(Contract contract, string description)
     {
         EnsureConnected();
-
-        var requestId = _requestManager.GetNextRequestId();
-        var tcs = _requestManager.RegisterPriceRequest(requestId);
-
-        using var cts = new CancellationTokenSource(_requestTimeoutMs);
-        cts.Token.Register(() => _requestManager.TryFailPriceRequest(
-            requestId, new TimeoutException($"Price request for {symbol} timed out")));
-
-        var contract = IbContractFactory.CreateUsStock(symbol);
-        _clientSocket!.reqMktData(requestId, contract, "", true, false, null);
-
         try
         {
-            return await tcs.Task;
+            return await RequestSnapshotAsync(contract, description);
         }
-        finally
+        catch (TimeoutException)
         {
-            try { _clientSocket.cancelMktData(requestId); } catch { }
+            EnsureConnected();
+            _logger.LogInformation("{Description}: delayed snapshot timed out, retrying with delayed-frozen (type 4)", description);
+            _clientSocket!.reqMarketDataType(4); // delayed-frozen
+            try
+            {
+                return await RequestSnapshotAsync(contract, description);
+            }
+            finally
+            {
+                try { _clientSocket.reqMarketDataType(3); } catch { } // restore delayed default
+            }
         }
     }
 
-    public async Task<decimal> GetVixAsync()
+    private async Task<decimal> RequestSnapshotAsync(Contract contract, string description)
     {
-        EnsureConnected();
-
         var requestId = _requestManager.GetNextRequestId();
         var tcs = _requestManager.RegisterPriceRequest(requestId);
 
         using var cts = new CancellationTokenSource(_requestTimeoutMs);
-        cts.Token.Register(() => _requestManager.TryFailPriceRequest(
-            requestId, new TimeoutException("VIX request timed out")));
+        using var registration = cts.Token.Register(() => _requestManager.TryFailPriceRequest(
+            requestId, new TimeoutException($"{description} timed out")));
 
-        var contract = IbContractFactory.CreateVixIndex();
         _clientSocket!.reqMktData(requestId, contract, "", true, false, null);
 
         try
